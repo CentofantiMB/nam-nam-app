@@ -40,7 +40,12 @@ function Icon({name}:{name:string}){
     check:<path d="m5 12 4 4L19 6"/>,
     edit:<><path d="M4 20h4l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></>,
     trash:<><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></>,
-    repeat:<><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M18.2 9A7 7 0 0 0 6 6.8L4 9"/><path d="M5.8 15A7 7 0 0 0 18 17.2L20 15"/></>,
+    repeat:<>
+      <path d="M20 6v6h-6"/>
+      <path d="M4 18v-6h6"/>
+      <path d="M6.5 8.5A7 7 0 0 1 18.8 7L20 12"/>
+      <path d="M17.5 15.5A7 7 0 0 1 5.2 17L4 12"/>
+    </>,
   };
   return <span aria-hidden className="icon"><svg {...common}>{paths[name]??<circle cx="12" cy="12" r="2"/>}</svg></span>;
 }
