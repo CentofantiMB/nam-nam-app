@@ -1,0 +1,168 @@
+import { AppState, Food, Recipe, ShoppingItem } from './types';
+
+export const SEED_VERSION = 2;
+const now = '2026-10-08T12:00:00.000Z';
+const f = (id: string, name: string, kcal: number, fat: number, carbs: number, protein: number, fiber: number, unit: 'g' | 'ml' = 'g'): Food => ({
+  id, name, kcal, fat, carbs, protein, fiber, unit, active: true, createdAt: now, updatedAt: now,
+});
+
+export const seedFoods: Food[] = [
+  f("cebolla","Cebolla",42,0.08,10.11,0.92,0),
+  f("morron","Morrón",24,0.23,5.66,0.95,0),
+  f("zanahoria","Zanahoria",41,0.24,9.58,0.93,0),
+  f("pechuga","Pechuga pollo al horno",164,3.54,0,30.76,0),
+  f("pata-muslo","Pata muslo",214,11.06,0,26.8,0),
+  f("alitas","Alitas",203,8.13,0,30.46,0),
+  f("atun-desm","Atún nat. desm.",103,1.5,0,16.7,0),
+  f("atun-lomitos","Atún nat. lomitos",101,0.67,0,21.67,0),
+  f("huevo","Huevo",155,10.6,1.1,12.6,0),
+  f("tomate","Tomate",18,0.2,3.9,0.5,0),
+  f("port-salut","Port Salut Queso Cremoso",352,28,1,20,0),
+  f("arvejas","Arvejas",113,1.3,16.1,9.2,7.3),
+  f("calabaza","Calabaza",20,0.07,4.9,0.72,1.1),
+  f("tapa-balance","Tapa de tarta la salteña balance",270,5,50,6.6,0),
+  f("tapa-empanada","Tapa empanada la salteña balance",257,5,46.7,6.3,2.7),
+  f("leche-coto","Leche entera coto",57,3,4.5,3,0,'ml'),
+  f("leche-proteica-la-serenissima","Leche protéica la serenissima",42,0,4.6,5.2,0,'ml'),
+  f("fideos","Fideos secos",341,1.5,71,11,0),
+  f("papa","Papa hervida",87,0.1,20,1.7,0),
+  f("gelatina-sabor","Gelatina sin sabor",350,0,0,85,0),
+  f("gelatina-azucar","Gelatina sin azúcar",7,0,0.6,1.7,0),
+  f("banana","Banana",89,0.3,22.8,1.1,2.6),
+  f("manzana","Manzana",52,0,13.8,0.26,2.4),
+  f("harina-integral","Harina integral",306,3,60,12,11.6),
+  f("harina-0000","Harina 0000",350,1,72,9,3),
+  f("avena","Avena instantánea",389,7.9,69.5,11.9,10.6),
+  f("chia","Semillas Chía",486,30.7,42.1,16.5,34.4),
+  f("aceite-oliva","Aceite de Oliva",884,100,0,0,0),
+  f("aceite-de-girasol-natura","Aceite de girasol Natura",900,100,0,0,0),
+  f("miel","Miel",335,0,82.4,0.4,0.2),
+  f("pure-de-tomates","Puré de tomates",28,0,6.17,1.17,1.33,'ml'),
+  f("soja-texturizada","Soja texturizada",364,4,30,50,4),
+  f("pan-rallado","Pan rallado",181,2.4,32.9,5.9,1.6),
+  f("cacao-amargo","Cacao amargo",275,11,18.5,23,35),
+  f("cafe-instantaneo","Café instantáneo",333,0,67,10,0),
+  f("polvo-de-hornear","Polvo de hornear",53,0,28,0,0),
+  f("leche-en-polvo-proteica-la-serenisima","Leche en polvo protéica la serenisima",365,1.5,42.3,46.2,0),
+  f("yogurt-natural-starter","Yogurt natural starter",86,3.4,8,6.5,0),
+  f("arandanos","Arándanos",57,0.3,14.5,0.7,2.7),
+  f("carne-picada","Carne picada",180,10,0,20,0),
+];
+
+const ri = (id:string, foodId:string, amount:number) => ({ id, foodId, amount });
+
+export const seedRecipes: Recipe[] = [
+  {
+    id:"tarta-calabaza", name:"Tarta de calabaza", rawWeight:2650, finalWeight:2650,
+    notes:"Importado desde Google Sheets. Peso final inicial provisional: se igualó a la suma de los ingredientes registrados. Editalo con el peso final real de la preparación.", active:true, createdAt:now, updatedAt:now,
+    ingredients:[ri("tarta-calabaza-1","cebolla",200),ri("tarta-calabaza-2","pechuga",400),ri("tarta-calabaza-3","arvejas",150),ri("tarta-calabaza-4","calabaza",1500),ri("tarta-calabaza-5","tapa-balance",400)]
+  },
+  {
+    id:"tarta-atun", name:"Tarta de atún", rawWeight:2075, finalWeight:2075,
+    notes:"Importado desde Google Sheets. Peso final inicial provisional: se igualó a la suma de los ingredientes registrados. Editalo con el peso final real de la preparación.", active:true, createdAt:now, updatedAt:now,
+    ingredients:[ri("tarta-atun-1","cebolla",333.33333333),ri("tarta-atun-2","morron",266.66666667),ri("tarta-atun-3","zanahoria",333.33333333),ri("tarta-atun-4","atun-desm",240),ri("tarta-atun-5","atun-lomitos",240),ri("tarta-atun-6","huevo",100),ri("tarta-atun-7","port-salut",150),ri("tarta-atun-8","tapa-balance",400),ri("tarta-atun-9","aceite-oliva",11.66666667)]
+  },
+  {
+    id:"tarta-pollo", name:"Tarta de pollito", rawWeight:1846, finalWeight:1846,
+    notes:"Importado desde Google Sheets. Peso final inicial provisional: se igualó a la suma de los ingredientes registrados. Editalo con el peso final real de la preparación.", active:true, createdAt:now, updatedAt:now,
+    ingredients:[ri("tarta-pollo-1","cebolla",333.33333333),ri("tarta-pollo-2","morron",266.66666667),ri("tarta-pollo-3","zanahoria",333.33333333),ri("tarta-pollo-4","pechuga",400),ri("tarta-pollo-5","huevo",100),ri("tarta-pollo-6","tomate",1),ri("tarta-pollo-7","tapa-balance",400),ri("tarta-pollo-8","aceite-oliva",11.66666667)]
+  },
+  {
+    id:"pan", name:"Pan", rawWeight:1175, finalWeight:1175,
+    notes:"Importado desde Google Sheets. Peso final inicial provisional: se igualó a la suma de los ingredientes registrados. Editalo con el peso final real de la preparación.", active:true, createdAt:now, updatedAt:now,
+    ingredients:[ri("pan-1","harina-integral",1000),ri("pan-2","aceite-de-girasol-natura",60),ri("pan-3","miel",50),ri("pan-4","leche-en-polvo-proteica-la-serenisima",65)]
+  },
+  {
+    id:"yogurt", name:"Yogurt", rawWeight:1143, finalWeight:1143,
+    notes:"Importado desde Google Sheets. Peso final inicial provisional: se igualó a la suma de los ingredientes registrados. Editalo con el peso final real de la preparación.", active:true, createdAt:now, updatedAt:now,
+    ingredients:[ri("yogurt-1","leche-coto",1000),ri("yogurt-2","gelatina-sabor",3),ri("yogurt-3","leche-en-polvo-proteica-la-serenisima",80),ri("yogurt-4","yogurt-natural-starter",60)]
+  },
+  {
+    id:"bolognesa", name:"Bolognesa", rawWeight:2365, finalWeight:2365,
+    notes:"Importado desde Google Sheets. Peso final inicial provisional: se igualó a la suma de los ingredientes registrados. Editalo con el peso final real de la preparación.", active:true, createdAt:now, updatedAt:now,
+    ingredients:[ri("bolognesa-1","cebolla",333.33333333),ri("bolognesa-2","morron",266.66666667),ri("bolognesa-3","zanahoria",333.33333333),ri("bolognesa-4","leche-coto",100),ri("bolognesa-5","aceite-oliva",11.66666667),ri("bolognesa-6","pure-de-tomates",520),ri("bolognesa-7","carne-picada",800)]
+  },
+];
+
+export const seedShopping: ShoppingItem[] = [
+  {id:"shop-1",category:"Almacén",name:"Aceite de oliva",quantity:1,unit:"botella 500ml",referencePrice:12762.75,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-2",category:"Almacén",name:"Aceite para cocina",quantity:1,unit:"botella 1,5 L",referencePrice:8000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-3",category:"Almacén",name:"Arvejas",quantity:1,unit:"lata/paquete",referencePrice:548.88,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-4",category:"Almacén",name:"Atún desmenuzado",quantity:2,unit:"latas",referencePrice:1343,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-5",category:"Almacén",name:"Atún en trozos",quantity:2,unit:"latas",referencePrice:2435.45,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-6",category:"Almacén",name:"Avena",quantity:400,unit:"gr",referencePrice:2200,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-7",category:"Almacén",name:"Azúcar",quantity:1,unit:"kg",referencePrice:1500,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-8",category:"Almacén",name:"Bicarbonato de sodio",quantity:1,unit:"paquete",referencePrice:739.2,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-9",category:"Almacén",name:"Coco rallado",quantity:100,unit:"gr",referencePrice:513.6,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-10",category:"Almacén",name:"Dulce de leche",quantity:1,unit:"pote",referencePrice:5000,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-11",category:"Almacén",name:"Duraznos en almibar",quantity:1,unit:"lata",referencePrice:2500,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-12",category:"Almacén",name:"Extracto/puré de tomate",quantity:1,unit:"botella/brik",referencePrice:1194.25,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-13",category:"Almacén",name:"Fideos cabello de ángel",quantity:1,unit:"400 gr",referencePrice:1200,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-14",category:"Almacén",name:"Fideos mostacholes",quantity:1,unit:"500 gr",referencePrice:1200,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-15",category:"Almacén",name:"Film",quantity:1,unit:"Rollo",referencePrice:5000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-16",category:"Almacén",name:"Harina",quantity:2,unit:"kg",referencePrice:2200,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-17",category:"Almacén",name:"Harina integral",quantity:1,unit:"kg",referencePrice:1800,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-18",category:"Almacén",name:"Levadura fresca",quantity:25,unit:"gr",referencePrice:212.2875,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-19",category:"Almacén",name:"Maicena",quantity:1,unit:"paquete",referencePrice:4100,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-20",category:"Almacén",name:"Mayonesa",quantity:1,unit:"Envase 500cc",referencePrice:2279.67,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-21",category:"Almacén",name:"Miel",quantity:500,unit:"envase 500gr",referencePrice:8700,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-22",category:"Almacén",name:"Papel aluminio",quantity:1,unit:"Rollo",referencePrice:5000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-23",category:"Almacén",name:"Papel de arroz",quantity:1,unit:"caja",referencePrice:0,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-24",category:"Almacén",name:"Papel manteca",quantity:1,unit:"rollo",referencePrice:6000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-25",category:"Almacén",name:"Pasta de maní",quantity:1,unit:"envase",referencePrice:7000,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-26",category:"Almacén",name:"Polvo de hornear",quantity:1,unit:"paquete",referencePrice:3000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-27",category:"Almacén",name:"Sal",quantity:1,unit:"paquete 500 gr",referencePrice:1263.95,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-28",category:"Almacén",name:"Salsa de ostras",quantity:1,unit:"botellita 300 ml",referencePrice:0,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-29",category:"Almacén",name:"Salsa de soja",quantity:1,unit:"botella",referencePrice:3500,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-30",category:"Almacén",name:"Soja texturizada",quantity:1,unit:"paquete",referencePrice:2100,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-31",category:"Almacén",name:"Splenda",quantity:1,unit:"paquete",referencePrice:4017,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-32",category:"Almacén",name:"Tapas de tarta",quantity:3,unit:"paquetes",referencePrice:8400,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-33",category:"Carnicería",name:"Carne picada",quantity:750,unit:"gr",referencePrice:9463.27,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-34",category:"Carnicería",name:"Pata muslo",quantity:3,unit:"kg",referencePrice:12000,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-35",category:"Carnicería",name:"Pollo entero",quantity:1,unit:"unidad",referencePrice:12712.6,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-36",category:"Dietética",name:"Arándanos",quantity:100,unit:"gr",referencePrice:3499,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-37",category:"Dietética",name:"Chocolate amargo",quantity:150,unit:"gr",referencePrice:8000,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-38",category:"Dietética",name:"Pasas de uva",quantity:1,unit:"cajita",referencePrice:3000,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-39",category:"Dietética",name:"Proteína sabor vainilla",quantity:1,unit:"envase",referencePrice:60000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-40",category:"Dietética",name:"Quinoa pop",quantity:100,unit:"gr",referencePrice:0,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-41",category:"Lácteos y huevos",name:"Huevos",quantity:30,unit:"unidades",referencePrice:7500,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-42",category:"Lácteos y huevos",name:"Leche descremada",quantity:3,unit:"litros",referencePrice:4842.45,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-43",category:"Lácteos y huevos",name:"Leche en polvo",quantity:1,unit:"paquete",referencePrice:4500,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-44",category:"Lácteos y huevos",name:"Manteca",quantity:100,unit:"gr",referencePrice:2500,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-45",category:"Lácteos y huevos",name:"Queso cremoso Giu",quantity:500,unit:"gr",referencePrice:6699.5,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-46",category:"Lácteos y huevos",name:"Queso Muzza",quantity:400,unit:"gr",referencePrice:5994.38,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-47",category:"Lácteos y huevos",name:"Yogurt natural",quantity:1,unit:"Envase chico",referencePrice:1500,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-48",category:"Limpieza",name:"Agua oxigenada",quantity:1,unit:"litros",referencePrice:0,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-49",category:"Limpieza",name:"Coso de limpieza de Giu",quantity:1,unit:"Sobres",referencePrice:1474.99,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-50",category:"Limpieza",name:"Curitas",quantity:1,unit:"cajita",referencePrice:2500,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-51",category:"Limpieza",name:"Dentífrico",quantity:2,unit:"envases",referencePrice:5000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-52",category:"Limpieza",name:"Detergente platos",quantity:1,unit:"envase",referencePrice:2500,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-53",category:"Limpieza",name:"Hisopos",quantity:1,unit:"envase",referencePrice:3000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-54",category:"Limpieza",name:"Jabón líquido",quantity:3,unit:"litros",referencePrice:10000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-55",category:"Limpieza",name:"Lavandina",quantity:3,unit:"litros",referencePrice:3300,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-56",category:"Limpieza",name:"Papel de cocina",quantity:1,unit:"Paquete x3 150",referencePrice:2000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-57",category:"Limpieza",name:"Papel higiénico",quantity:1,unit:"Paquete x4 80m",referencePrice:4500,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-58",category:"Limpieza",name:"Suavizante",quantity:3,unit:"litros",referencePrice:10000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-59",category:"Verdulería",name:"Ajo",quantity:1,unit:"cabeza",referencePrice:1000,frequency:"Mensual" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-60",category:"Verdulería",name:"Bananas",quantity:2,unit:"kg",referencePrice:6000,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-61",category:"Verdulería",name:"Brócoli",quantity:1,unit:"paquete",referencePrice:4000,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-62",category:"Verdulería",name:"Calabaza",quantity:2,unit:"kg",referencePrice:5006.53,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-63",category:"Verdulería",name:"Cebolla",quantity:6,unit:"unidades",referencePrice:7500,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-64",category:"Verdulería",name:"Jengibre",quantity:1,unit:"unidad",referencePrice:363.95,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-65",category:"Verdulería",name:"Lima",quantity:200,unit:"gr",referencePrice:652.64,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-66",category:"Verdulería",name:"Limón",quantity:6,unit:"unidades",referencePrice:1500,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-67",category:"Verdulería",name:"Mandarinas",quantity:2,unit:"kg",referencePrice:1500,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-68",category:"Verdulería",name:"Morrón",quantity:3,unit:"unidades",referencePrice:9897.96,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-69",category:"Verdulería",name:"Naranja",quantity:1,unit:"kg",referencePrice:782.13,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-70",category:"Verdulería",name:"Papa",quantity:1,unit:"kg",referencePrice:2800,frequency:"Ocasional" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-71",category:"Verdulería",name:"Tomate",quantity:1,unit:"unidad",referencePrice:613.61,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+  {id:"shop-72",category:"Verdulería",name:"Zanahoria",quantity:8,unit:"unidades",referencePrice:1928.73,frequency:"Semanal" as ShoppingItem['frequency'],checked:false,updatedAt:now},
+];
+
+export const seedState: AppState = {
+  foods: seedFoods,
+  recipes: seedRecipes,
+  goals: { kcal:2000, fat:60, carbs:200, protein:160, fiber:30 },
+  logs: {},
+  shopping: seedShopping,
+};

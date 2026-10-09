@@ -1,0 +1,9 @@
+{
+  "name":"Ñam Ñam",
+  "short_name":"Ñam Ñam",
+  "start_url":"/",
+  "display":"standalone",
+  "background_color":"#0b0d12",
+  "theme_color":"#0b0d12",
+  "description":"Seguimiento de nutrición y hábitos."
+}
