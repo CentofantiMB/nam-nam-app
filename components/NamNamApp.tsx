@@ -21,8 +21,28 @@ function parseNum(v:string){ const n=Number(v.replace(',','.')); return Number.i
 function currency(v:number){ return new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(v); }
 
 function Icon({name}:{name:string}){
-  const icons:Record<string,string>={today:'●',history:'◷',stats:'⌁',recipes:'◇',foods:'◉',shopping:'▣',users:'♙',settings:'⚙',plus:'＋',search:'⌕',close:'×',back:'‹',next:'›',check:'✓',edit:'✎',trash:'⌫'};
-  return <span aria-hidden className="icon">{icons[name]??'•'}</span>;
+  const common={viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.9,strokeLinecap:'round' as const,strokeLinejoin:'round' as const,'aria-hidden':true};
+  const paths:Record<string,React.ReactNode>={
+    today:<><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/></>,
+    history:<><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></>,
+    stats:<><path d="M5 20V11"/><path d="M12 20V5"/><path d="M19 20V8"/><path d="M3 20h18"/></>,
+    recipes:<><path d="M5 4.5h10a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3Z"/><path d="M8 20V7.5a3 3 0 0 0-3-3"/><path d="M9 9h5M9 13h5"/></>,
+    foods:<><path d="M12 7c-4.8-3.8-8.5.2-7.2 5.6C6 17.5 9 21 12 21s6-3.5 7.2-8.4C20.5 7.2 16.8 3.2 12 7Z"/><path d="M12 7c.3-2.2 1.5-3.6 3.6-4"/><path d="M11.8 6.8c-1.5-1.8-3.1-2.2-4.8-1.5"/></>,
+    shopping:<><path d="M5 8h14l-1 12H6Z"/><path d="M9 8a3 3 0 0 1 6 0"/></>,
+    users:<><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3.5 2.4-5.3 5.5-5.3s5 1.8 5.5 5.3"/><circle cx="17" cy="9" r="2.2"/><path d="M15.7 14.8c2.7-.5 4.4.8 4.8 3.6"/></>,
+    settings:<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
+    more:<><path d="M4 7h16"/><path d="M7 12h10"/><path d="M10 17h4"/></>,
+    plus:<path d="M12 5v14M5 12h14"/>,
+    search:<><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></>,
+    close:<path d="m6 6 12 12M18 6 6 18"/>,
+    back:<path d="m15 18-6-6 6-6"/>,
+    next:<path d="m9 18 6-6-6-6"/>,
+    check:<path d="m5 12 4 4L19 6"/>,
+    edit:<><path d="M4 20h4l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></>,
+    trash:<><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></>,
+    repeat:<><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M18.2 9A7 7 0 0 0 6 6.8L4 9"/><path d="M5.8 15A7 7 0 0 0 18 17.2L20 15"/></>,
+  };
+  return <span aria-hidden className="icon"><svg {...common}>{paths[name]??<circle cx="12" cy="12" r="2"/>}</svg></span>;
 }
 
 function ProgressBar({value,goal,macro='kcal'}:{value:number;goal:number;macro:keyof Goals}){
@@ -54,6 +74,14 @@ function Toast({children,onClose}:{children:React.ReactNode;onClose:()=>void}){
 }
 
 function Empty({text}:{text:string}){ return <div className="empty">{text}</div>; }
+
+function MoreMenu({items,active,onSelect,onClose}:{items:(readonly [View,string,string])[];active:View;onSelect:(v:View)=>void;onClose:()=>void}){
+  return <Modal title="Más opciones" onClose={onClose}>
+    <div className="mobile-more-grid">
+      {items.map(([id,label,icon])=><button key={id} className={active===id?'active':''} onClick={()=>{onSelect(id);onClose()}}><Icon name={icon}/><span>{label}</span><Icon name="next"/></button>)}
+    </div>
+  </Modal>;
+}
 
 function AuthScreen(){
   const [mode,setMode]=useState<'login'|'register'>('login');
@@ -113,7 +141,8 @@ export default function NamNamApp(){
   const [date,setDate]=useState(localISODate());
   const [addMeal,setAddMeal]=useState<MealType|null>(null);
   const [editingEntry,setEditingEntry]=useState<MealEntry|null>(null);
-  const [toast,setToast]=useState(false);
+  const [toast,setToast]=useState<{title:string;body:string}|null>(null);
+  const [moreOpen,setMoreOpen]=useState(false);
 
   if(!app.ready) return <div className="boot"><div className="logo-mark">Ñ</div><p>Cargando Ñam Ñam…</p></div>;
   if(hasSupabase && !app.isAuthenticated) return <AuthScreen/>;
@@ -124,10 +153,26 @@ export default function NamNamApp(){
     ['settings','Ajustes','settings']
   ];
 
+  const mobilePrimary:(readonly [View,string,string])[]=[
+    ['today','Hoy','today'],
+    ['history','Historial','history'],
+    ['stats','Progreso','stats'],
+    ['recipes','Recetas','recipes'],
+  ];
+  const mobileExtra=nav.filter(([id])=>!mobilePrimary.some(([mainId])=>mainId===id));
+  const showToast=(title:string,body:string)=>{setToast({title,body});setTimeout(()=>setToast(null),4200)};
+
   const handleAdd=(meal:MealType,itemType:'food'|'recipe',itemId:string,amount:number)=>{
     const result=app.addMealEntry({date,mealType:meal,itemType,itemId,amount});
     setAddMeal(null);
-    if(result.crossedProteinGoal){ app.markProteinNotified(date); setToast(true); setTimeout(()=>setToast(false),5200); }
+    if(result.crossedProteinGoal){ app.markProteinNotified(date); showToast('¡Objetivo de proteína logrado!','Llegaste a tu meta diaria. Excelente trabajo.'); }
+  };
+
+  const handleRepeat=(meal:MealType)=>{
+    const result=app.repeatMealFromPreviousDay(date,meal);
+    if(!result.copied){ showToast('Nada para repetir',`Ayer no registraste alimentos en ${meal.toLowerCase()}.`); return; }
+    if(result.crossedProteinGoal) app.markProteinNotified(date);
+    showToast(`${meal} repetido`,`${result.copied} ${result.copied===1?'registro copiado':'registros copiados'} desde ayer.`);
   };
 
   return <div className="app-shell">
@@ -139,7 +184,7 @@ export default function NamNamApp(){
 
     <main className="main">
       <div className="mobile-top"><div className="brand-icon small">Ñ</div><div><strong>Ñam Ñam</strong><small>{nav.find(n=>n[0]===view)?.[1]}</small></div></div>
-      {view==='today' && <TodayView date={date} setDate={setDate} onAdd={setAddMeal} onEdit={setEditingEntry}/>} 
+      {view==='today' && <TodayView date={date} setDate={setDate} onAdd={setAddMeal} onEdit={setEditingEntry} onRepeat={handleRepeat}/>} 
       {view==='history' && <HistoryView onOpenDate={d=>{setDate(d);setView('today')}}/>}
       {view==='stats' && <StatsView/>}
       {view==='recipes' && <RecipesView/>}
@@ -150,20 +195,25 @@ export default function NamNamApp(){
     </main>
 
     <div className="mobile-nav">
-      {nav.map(([id,label,icon])=><button key={id} className={view===id?'active':''} onClick={()=>setView(id)}><Icon name={icon}/><span>{label==='Evolución'?'Evol.':label}</span></button>)}
+      {mobilePrimary.map(([id,label,icon])=><button key={id} className={view===id?'active':''} onClick={()=>setView(id)}><Icon name={icon}/><span>{label}</span></button>)}
+      <button className={!mobilePrimary.some(([id])=>id===view)?'active':''} onClick={()=>setMoreOpen(true)}><Icon name="more"/><span>Más</span></button>
     </div>
 
     {addMeal && <AddFoodModal meal={addMeal} onClose={()=>setAddMeal(null)} onAdd={handleAdd}/>} 
     {editingEntry && <EditEntryModal entry={editingEntry} onClose={()=>setEditingEntry(null)} onSave={amount=>{app.updateMealEntry(date,editingEntry.id,amount);setEditingEntry(null)}} onDelete={()=>{app.deleteMealEntry(date,editingEntry.id);setEditingEntry(null)}}/>}
-    {toast && <Toast onClose={()=>setToast(false)}><strong>¡Objetivo de proteína logrado!</strong><span> Llegaste a tu meta diaria. Excelente trabajo.</span></Toast>}
+    {moreOpen && <MoreMenu items={mobileExtra} active={view} onSelect={setView} onClose={()=>setMoreOpen(false)}/>}
+    {toast && <Toast onClose={()=>setToast(null)}><strong>{toast.title}</strong><span> {toast.body}</span></Toast>}
   </div>;
 }
 
-function TodayView({date,setDate,onAdd,onEdit}:{date:string;setDate:(d:string)=>void;onAdd:(m:MealType)=>void;onEdit:(e:MealEntry)=>void}){
+function TodayView({date,setDate,onAdd,onEdit,onRepeat}:{date:string;setDate:(d:string)=>void;onAdd:(m:MealType)=>void;onEdit:(e:MealEntry)=>void;onRepeat:(m:MealType)=>void}){
   const app=useApp();
   const day=app.getDay(date);
   const totals=app.getDayTotals(date);
   const kcalRemaining=day.goals.kcal-totals.kcal;
+  const yesterdayDateObj=new Date(`${date}T12:00:00`); yesterdayDateObj.setDate(yesterdayDateObj.getDate()-1);
+  const yesterdayDate=localISODate(yesterdayDateObj);
+  const yesterday=app.getDay(yesterdayDate);
   const shift=(days:number)=>{const d=new Date(`${date}T12:00:00`);d.setDate(d.getDate()+days);setDate(localISODate(d));};
   return <div className="page fade-in">
     <header className="page-head today-head">
@@ -183,10 +233,22 @@ function TodayView({date,setDate,onAdd,onEdit}:{date:string;setDate:(d:string)=>
       <div className="section-title"><div><p className="eyebrow">Registro</p><h2>Comidas del día</h2></div><span className="muted">{day.entries.length} registros</span></div>
       <div className="meal-grid">{meals.map(meal=>{
         const entries=day.entries.filter(e=>e.mealType===meal);
+        const yesterdayEntries=yesterday.entries.filter(e=>e.mealType===meal);
         const mealMacros=entries.reduce((a,e)=>addMacros(a,e.macros),emptyMacros());
         return <article className="meal-card" key={meal}>
-          <div className="meal-head"><div><h3>{meal}</h3><span>{entries.length?`${formatNumber(mealMacros.kcal,0)} kcal`:'Sin registros'}</span></div><button className="round-add" onClick={()=>onAdd(meal)}><Icon name="plus"/></button></div>
-          <div className="meal-list">{entries.length===0?<button className="add-empty" onClick={()=>onAdd(meal)}>+ Agregar alimento o receta</button>:entries.map(e=><button className="entry-row" key={e.id} onClick={()=>onEdit(e)}><div><strong>{e.itemName}</strong><span>{formatNumber(e.amount,e.amount%1?1:0)} {e.unit}</span></div><div><b>{formatNumber(e.macros.kcal,0)}</b><span>kcal</span></div></button>)}</div>
+          <div className="meal-head">
+            <div><h3>{meal}</h3><span>{entries.length?`${formatNumber(mealMacros.kcal,0)} kcal`:'Sin registros'}</span></div>
+            <div className="meal-head-actions">
+              <button className="repeat-meal" disabled={!yesterdayEntries.length} onClick={()=>onRepeat(meal)} title={yesterdayEntries.length?`Repetir ${meal.toLowerCase()} de ayer`:`Ayer no hubo registros en ${meal.toLowerCase()}`}><Icon name="repeat"/><span>Repetir ayer</span></button>
+              <button className="round-add" onClick={()=>onAdd(meal)} title={`Agregar a ${meal}`}><Icon name="plus"/></button>
+            </div>
+          </div>
+          <div className="meal-list">{entries.length===0?
+            <div className="empty-meal-actions">
+              <button className="add-empty" onClick={()=>onAdd(meal)}>+ Agregar alimento o receta</button>
+              {yesterdayEntries.length>0&&<button className="repeat-empty" onClick={()=>onRepeat(meal)}><Icon name="repeat"/><span>Repetir {meal.toLowerCase()} de ayer</span><small>{yesterdayEntries.length} {yesterdayEntries.length===1?'registro':'registros'}</small></button>}
+            </div>
+            :entries.map(e=><button className="entry-row" key={e.id} onClick={()=>onEdit(e)}><div><strong>{e.itemName}</strong><span>{formatNumber(e.amount,e.amount%1?1:0)} {e.unit}</span></div><div><b>{formatNumber(e.macros.kcal,0)}</b><span>kcal</span></div></button>)}</div>
         </article>;
       })}</div>
     </section>

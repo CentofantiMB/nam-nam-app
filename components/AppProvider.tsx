@@ -24,6 +24,7 @@ type AppContextValue = {
   getDay: (date:string) => DailyLog;
   getDayTotals: (date:string) => Macros;
   addMealEntry: (input:AddEntryInput) => { crossedProteinGoal:boolean };
+  repeatMealFromPreviousDay: (date:string, mealType:MealType) => { copied:number; crossedProteinGoal:boolean; sourceDate:string };
   updateMealEntry: (date:string, entryId:string, amount:number) => void;
   deleteMealEntry: (date:string, entryId:string) => void;
   markProteinNotified: (date:string) => void;
@@ -183,6 +184,65 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
     return { crossedProteinGoal };
   }, []);
 
+  const repeatMealFromPreviousDay = useCallback((date:string, mealType:MealType) => {
+    const sourceDateObj = new Date(`${date}T12:00:00`);
+    sourceDateObj.setDate(sourceDateObj.getDate() - 1);
+    const sourceDate = localISODate(sourceDateObj);
+    const sourceEntries = (state.logs[sourceDate]?.entries ?? []).filter(e => e.mealType === mealType);
+    if (!sourceEntries.length) return { copied:0, crossedProteinGoal:false, sourceDate };
+
+    const targetDay = state.logs[date] ?? { date, goals:{...state.goals}, entries:[], proteinGoalNotified:false };
+    const beforeProtein = targetDay.entries.reduce((sum,e)=>sum+e.macros.protein,0);
+
+    const copiedEntries:MealEntry[] = sourceEntries.map(source => {
+      let itemName = source.itemName;
+      let unit = source.unit;
+      let macros = source.macros;
+
+      if (source.itemType === 'food') {
+        const food = state.foods.find(f => f.id === source.itemId);
+        if (food) {
+          itemName = food.name;
+          unit = food.unit;
+          macros = scaleMacros(food, source.amount / 100);
+        }
+      } else {
+        const recipe = state.recipes.find(r => r.id === source.itemId);
+        if (recipe && recipe.finalWeight > 0) {
+          itemName = recipe.name;
+          unit = 'g';
+          let total = emptyMacros();
+          for (const ing of recipe.ingredients) {
+            const food = state.foods.find(f => f.id === ing.foodId);
+            if (food) total = addMacros(total, scaleMacros(food, ing.amount / 100));
+          }
+          macros = scaleMacros(scaleMacros(total, 100 / recipe.finalWeight), source.amount / 100);
+        }
+      }
+
+      return {
+        ...source,
+        id: uid('entry'),
+        date,
+        itemName,
+        unit,
+        macros,
+        createdAt: new Date().toISOString(),
+      };
+    });
+
+    const addedProtein = copiedEntries.reduce((sum,e)=>sum+e.macros.protein,0);
+    const afterProtein = beforeProtein + addedProtein;
+    const crossedProteinGoal = beforeProtein < targetDay.goals.protein && afterProtein >= targetDay.goals.protein && !targetDay.proteinGoalNotified;
+
+    setState(prev => {
+      const day = prev.logs[date] ?? { date, goals:{...prev.goals}, entries:[], proteinGoalNotified:false };
+      return { ...prev, logs:{...prev.logs,[date]:{...day,entries:[...day.entries,...copiedEntries]}} };
+    });
+
+    return { copied:copiedEntries.length, crossedProteinGoal, sourceDate };
+  }, [state]);
+
   const updateMealEntry = useCallback((date:string, entryId:string, amount:number) => {
     setState(prev => {
       const day = prev.logs[date]; if (!day) return prev;
@@ -230,7 +290,7 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
   const deleteShoppingItem = useCallback((id:string)=>setState(prev=>({...prev,shopping:prev.shopping.filter(s=>s.id!==id)})),[]);
   const toggleShoppingItem = useCallback((id:string)=>setState(prev=>({...prev,shopping:prev.shopping.map(s=>s.id===id?{...s,checked:!s.checked,updatedAt:new Date().toISOString()}:s)})),[]);
 
-  const value = useMemo<AppContextValue>(()=>({state,ready,authMode,userId,userEmail,userRole,isAuthenticated:!hasSupabase||Boolean(userId),setState,getRecipeMacrosPer100,getDay,getDayTotals,addMealEntry,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem}),[state,ready,authMode,userId,userEmail,userRole,getRecipeMacrosPer100,getDay,getDayTotals,addMealEntry,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem]);
+  const value = useMemo<AppContextValue>(()=>({state,ready,authMode,userId,userEmail,userRole,isAuthenticated:!hasSupabase||Boolean(userId),setState,getRecipeMacrosPer100,getDay,getDayTotals,addMealEntry,repeatMealFromPreviousDay,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem}),[state,ready,authMode,userId,userEmail,userRole,getRecipeMacrosPer100,getDay,getDayTotals,addMealEntry,repeatMealFromPreviousDay,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
