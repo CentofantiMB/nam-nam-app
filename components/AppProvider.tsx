@@ -3,7 +3,21 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, DailyLog, Food, Goals, Macros, MealEntry, MealType, Recipe, ShoppingItem, UserRole } from '@/lib/types';
 import { addMacros, emptyMacros, localISODate, scaleMacros, uid } from '@/lib/utils';
-import { loadLocalState, loadRemoteState, saveLocalState, saveRemoteState, getSessionUser, loadCurrentProfile } from '@/lib/persistence';
+import {
+  loadLocalState,
+  loadRemoteState,
+  saveLocalState,
+  saveRemoteState,
+  getSessionUser,
+  loadCurrentProfile,
+  loadSharedCatalog,
+  initializeSharedCatalog,
+  saveSharedFood,
+  deactivateSharedFood,
+  saveSharedRecipe,
+  deactivateSharedRecipe,
+  subscribeSharedCatalog,
+} from '@/lib/persistence';
 import { hasSupabase, supabase } from '@/lib/supabase';
 import { seedState } from '@/lib/seed';
 
@@ -20,6 +34,7 @@ type AppContextValue = {
   userRole: UserRole | null;
   isAuthenticated: boolean;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  getRecipeReferenceWeight: (recipe:Recipe) => number;
   getRecipeMacrosPer100: (recipe: Recipe) => Macros;
   getDay: (date:string) => DailyLog;
   getDayTotals: (date:string) => Macros;
@@ -44,6 +59,15 @@ function seedFallback(): AppState {
   return JSON.parse(JSON.stringify(seedState)) as AppState;
 }
 
+function referenceWeight(recipe:Recipe) {
+  if (recipe.finalWeight > 0) return recipe.finalWeight;
+  return recipe.ingredients.reduce((sum,i)=>sum+i.amount,0);
+}
+
+function mergeCatalog(base:AppState,catalog:{foods:Food[];recipes:Recipe[]}):AppState {
+  return {...base,foods:catalog.foods,recipes:catalog.recipes};
+}
+
 export function AppProvider({ children }: { children:React.ReactNode }) {
   const [state, setState] = useState<AppState>(() => hasSupabase ? seedFallback() : loadLocalState());
   const [ready, setReady] = useState(false);
@@ -52,6 +76,7 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -63,20 +88,30 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
       setAuthMode('remote');
 
       try {
-        const [remote, profile] = await Promise.all([
+        const cached = loadLocalState(user.id);
+        const [remote, profile, initialCatalog] = await Promise.all([
           loadRemoteState(user.id),
           loadCurrentProfile().catch(() => null),
+          loadSharedCatalog(),
         ]);
         if (!mounted) return;
         setUserRole(profile?.role ?? 'user');
-        if (remote) {
-          setState(remote);
-          saveLocalState(remote, user.id);
-        } else {
-          const cached = loadLocalState(user.id);
-          setState(cached);
-          await saveRemoteState(user.id, cached);
+
+        const personal = remote ?? cached;
+        let catalog = initialCatalog;
+        if (!catalog) {
+          const catalogSource = remote && (remote.foods?.length || remote.recipes?.length) ? remote : cached;
+          const foods = catalogSource.foods?.length ? catalogSource.foods : seedState.foods;
+          const recipes = catalogSource.recipes?.length ? catalogSource.recipes : seedState.recipes;
+          await initializeSharedCatalog(foods,recipes,user.id);
+          catalog = await loadSharedCatalog();
         }
+
+        const merged = catalog ? mergeCatalog(personal,catalog) : personal;
+        if (!mounted) return;
+        setState(merged);
+        saveLocalState(merged,user.id);
+        if (!remote) await saveRemoteState(user.id,merged);
       } catch (err) {
         console.error('Supabase load failed; using isolated local cache.', err);
         if (mounted) setState(loadLocalState(user.id));
@@ -121,41 +156,65 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
     if (!ready) return;
 
     if (authMode === 'remote' && userId) {
-      saveLocalState(state, userId);
+      saveLocalState(state,userId);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        saveRemoteState(userId, state).catch(err => console.error('Remote save failed', err));
-      }, 600);
+        saveRemoteState(userId,state).catch(err => console.error('Remote save failed',err));
+      },600);
     } else if (authMode === 'local' && !hasSupabase) {
       saveLocalState(state);
     }
 
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [state, ready, authMode, userId]);
+  }, [state,ready,authMode,userId]);
+
+  // Si otro usuario agrega o modifica un alimento/receta, refrescamos el catálogo
+  // compartido en esta sesión sin tocar el consumo privado.
+  useEffect(() => {
+    if (authMode !== 'remote' || !userId) return;
+    const stop = subscribeSharedCatalog(() => {
+      if (catalogRefreshTimer.current) clearTimeout(catalogRefreshTimer.current);
+      catalogRefreshTimer.current = setTimeout(async () => {
+        try {
+          const catalog = await loadSharedCatalog();
+          if (catalog) setState(prev => mergeCatalog(prev,catalog));
+        } catch (err) {
+          console.error('No se pudo refrescar el catálogo compartido.',err);
+        }
+      },250);
+    });
+    return () => {
+      if (catalogRefreshTimer.current) clearTimeout(catalogRefreshTimer.current);
+      stop();
+    };
+  },[authMode,userId]);
+
+  const getRecipeReferenceWeight = useCallback((recipe:Recipe)=>referenceWeight(recipe),[]);
 
   const getRecipeMacrosPer100 = useCallback((recipe:Recipe):Macros => {
-    if (!recipe.finalWeight || recipe.finalWeight <= 0) return emptyMacros();
+    const weight = referenceWeight(recipe);
+    if (weight <= 0) return emptyMacros();
     let total = emptyMacros();
     for (const ing of recipe.ingredients) {
       const food = state.foods.find(f => f.id === ing.foodId);
       if (!food) continue;
-      total = addMacros(total, scaleMacros(food, ing.amount / 100));
+      total = addMacros(total,scaleMacros(food,ing.amount/100));
     }
-    return scaleMacros(total, 100 / recipe.finalWeight);
-  }, [state.foods]);
+    return scaleMacros(total,100/weight);
+  },[state.foods]);
 
   const getDay = useCallback((date:string):DailyLog => {
-    return state.logs[date] ?? { date, goals:{...state.goals}, entries:[], proteinGoalNotified:false };
-  }, [state.logs, state.goals]);
+    return state.logs[date] ?? { date,goals:{...state.goals},entries:[],proteinGoalNotified:false };
+  },[state.logs,state.goals]);
 
   const getDayTotals = useCallback((date:string):Macros => {
-    return getDay(date).entries.reduce((acc,e)=>addMacros(acc,e.macros), emptyMacros());
-  }, [getDay]);
+    return getDay(date).entries.reduce((acc,e)=>addMacros(acc,e.macros),emptyMacros());
+  },[getDay]);
 
   const addMealEntry = useCallback((input:AddEntryInput) => {
     let crossedProteinGoal = false;
     setState(prev => {
-      const day = prev.logs[input.date] ?? { date:input.date, goals:{...prev.goals}, entries:[], proteinGoalNotified:false };
+      const day = prev.logs[input.date] ?? { date:input.date,goals:{...prev.goals},entries:[],proteinGoalNotified:false };
       const beforeProtein = day.entries.reduce((sum,e)=>sum+e.macros.protein,0);
       let itemName = '';
       let unit:'g'|'ml' = 'g';
@@ -166,32 +225,33 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
         itemName = food.name; unit = food.unit; macros = scaleMacros(food,input.amount/100);
       } else {
         const recipe = prev.recipes.find(r=>r.id===input.itemId);
-        if (!recipe || recipe.finalWeight<=0) return prev;
+        if (!recipe) return prev;
+        const weight = referenceWeight(recipe);
+        if (weight <= 0) return prev;
         itemName = recipe.name;
         let recipeTotal = emptyMacros();
         for (const ing of recipe.ingredients) {
           const food = prev.foods.find(f=>f.id===ing.foodId);
-          if (food) recipeTotal = addMacros(recipeTotal, scaleMacros(food, ing.amount/100));
+          if (food) recipeTotal = addMacros(recipeTotal,scaleMacros(food,ing.amount/100));
         }
-        const per100 = scaleMacros(recipeTotal,100/recipe.finalWeight);
-        macros = scaleMacros(per100,input.amount/100);
+        macros = scaleMacros(scaleMacros(recipeTotal,100/weight),input.amount/100);
       }
-      const entry:MealEntry = { id:uid('entry'), date:input.date, mealType:input.mealType, itemType:input.itemType, itemId:input.itemId, itemName, amount:input.amount, unit, macros, createdAt:new Date().toISOString() };
+      const entry:MealEntry = { id:uid('entry'),date:input.date,mealType:input.mealType,itemType:input.itemType,itemId:input.itemId,itemName,amount:input.amount,unit,macros,createdAt:new Date().toISOString() };
       const afterProtein = beforeProtein + macros.protein;
       crossedProteinGoal = beforeProtein < day.goals.protein && afterProtein >= day.goals.protein && !day.proteinGoalNotified;
-      return { ...prev, logs:{...prev.logs,[input.date]:{...day,entries:[...day.entries,entry]}} };
+      return { ...prev,logs:{...prev.logs,[input.date]:{...day,entries:[...day.entries,entry]}} };
     });
     return { crossedProteinGoal };
-  }, []);
+  },[]);
 
-  const repeatMealFromPreviousDay = useCallback((date:string, mealType:MealType) => {
+  const repeatMealFromPreviousDay = useCallback((date:string,mealType:MealType) => {
     const sourceDateObj = new Date(`${date}T12:00:00`);
-    sourceDateObj.setDate(sourceDateObj.getDate() - 1);
+    sourceDateObj.setDate(sourceDateObj.getDate()-1);
     const sourceDate = localISODate(sourceDateObj);
-    const sourceEntries = (state.logs[sourceDate]?.entries ?? []).filter(e => e.mealType === mealType);
-    if (!sourceEntries.length) return { copied:0, crossedProteinGoal:false, sourceDate };
+    const sourceEntries = (state.logs[sourceDate]?.entries ?? []).filter(e=>e.mealType===mealType);
+    if (!sourceEntries.length) return { copied:0,crossedProteinGoal:false,sourceDate };
 
-    const targetDay = state.logs[date] ?? { date, goals:{...state.goals}, entries:[], proteinGoalNotified:false };
+    const targetDay = state.logs[date] ?? { date,goals:{...state.goals},entries:[],proteinGoalNotified:false };
     const beforeProtein = targetDay.entries.reduce((sum,e)=>sum+e.macros.protein,0);
 
     const copiedEntries:MealEntry[] = sourceEntries.map(source => {
@@ -200,35 +260,23 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
       let macros = source.macros;
 
       if (source.itemType === 'food') {
-        const food = state.foods.find(f => f.id === source.itemId);
-        if (food) {
-          itemName = food.name;
-          unit = food.unit;
-          macros = scaleMacros(food, source.amount / 100);
-        }
+        const food = state.foods.find(f=>f.id===source.itemId);
+        if (food) { itemName=food.name; unit=food.unit; macros=scaleMacros(food,source.amount/100); }
       } else {
-        const recipe = state.recipes.find(r => r.id === source.itemId);
-        if (recipe && recipe.finalWeight > 0) {
-          itemName = recipe.name;
-          unit = 'g';
-          let total = emptyMacros();
+        const recipe = state.recipes.find(r=>r.id===source.itemId);
+        const weight = recipe ? referenceWeight(recipe) : 0;
+        if (recipe && weight>0) {
+          itemName=recipe.name; unit='g';
+          let total=emptyMacros();
           for (const ing of recipe.ingredients) {
-            const food = state.foods.find(f => f.id === ing.foodId);
-            if (food) total = addMacros(total, scaleMacros(food, ing.amount / 100));
+            const food=state.foods.find(f=>f.id===ing.foodId);
+            if (food) total=addMacros(total,scaleMacros(food,ing.amount/100));
           }
-          macros = scaleMacros(scaleMacros(total, 100 / recipe.finalWeight), source.amount / 100);
+          macros=scaleMacros(scaleMacros(total,100/weight),source.amount/100);
         }
       }
 
-      return {
-        ...source,
-        id: uid('entry'),
-        date,
-        itemName,
-        unit,
-        macros,
-        createdAt: new Date().toISOString(),
-      };
+      return {...source,id:uid('entry'),date,itemName,unit,macros,createdAt:new Date().toISOString()};
     });
 
     const addedProtein = copiedEntries.reduce((sum,e)=>sum+e.macros.protein,0);
@@ -236,30 +284,31 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
     const crossedProteinGoal = beforeProtein < targetDay.goals.protein && afterProtein >= targetDay.goals.protein && !targetDay.proteinGoalNotified;
 
     setState(prev => {
-      const day = prev.logs[date] ?? { date, goals:{...prev.goals}, entries:[], proteinGoalNotified:false };
-      return { ...prev, logs:{...prev.logs,[date]:{...day,entries:[...day.entries,...copiedEntries]}} };
+      const day = prev.logs[date] ?? { date,goals:{...prev.goals},entries:[],proteinGoalNotified:false };
+      return { ...prev,logs:{...prev.logs,[date]:{...day,entries:[...day.entries,...copiedEntries]}} };
     });
 
-    return { copied:copiedEntries.length, crossedProteinGoal, sourceDate };
-  }, [state]);
+    return { copied:copiedEntries.length,crossedProteinGoal,sourceDate };
+  },[state]);
 
-  const updateMealEntry = useCallback((date:string, entryId:string, amount:number) => {
+  const updateMealEntry = useCallback((date:string,entryId:string,amount:number) => {
     setState(prev => {
-      const day = prev.logs[date]; if (!day) return prev;
-      const entries = day.entries.map(e => {
-        if (e.id !== entryId) return e;
-        let macros = e.macros;
-        if (e.itemType==='food') {
-          const food=prev.foods.find(f=>f.id===e.itemId); if (food) macros=scaleMacros(food,amount/100);
+      const day=prev.logs[date]; if(!day)return prev;
+      const entries=day.entries.map(e=>{
+        if(e.id!==entryId)return e;
+        let macros=e.macros;
+        if(e.itemType==='food') {
+          const food=prev.foods.find(f=>f.id===e.itemId); if(food)macros=scaleMacros(food,amount/100);
         } else {
           const recipe=prev.recipes.find(r=>r.id===e.itemId);
-          if (recipe && recipe.finalWeight>0) {
+          const weight=recipe?referenceWeight(recipe):0;
+          if(recipe&&weight>0) {
             let total=emptyMacros();
-            for (const ing of recipe.ingredients){ const food=prev.foods.find(f=>f.id===ing.foodId); if(food) total=addMacros(total,scaleMacros(food,ing.amount/100)); }
-            macros=scaleMacros(scaleMacros(total,100/recipe.finalWeight),amount/100);
+            for(const ing of recipe.ingredients){const food=prev.foods.find(f=>f.id===ing.foodId);if(food)total=addMacros(total,scaleMacros(food,ing.amount/100));}
+            macros=scaleMacros(scaleMacros(total,100/weight),amount/100);
           }
         }
-        return {...e, amount, macros};
+        return {...e,amount,macros};
       });
       return {...prev,logs:{...prev.logs,[date]:{...day,entries}}};
     });
@@ -275,22 +324,41 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
     return {...prev,logs:{...prev.logs,[date]:{...day,proteinGoalNotified:true}}};
   }),[]);
 
-  const saveFood = useCallback((partial:Partial<Food>&{name:string})=>setState(prev=>{
+  const saveFood = useCallback((partial:Partial<Food>&{name:string})=>{
     const now=new Date().toISOString();
-    if(partial.id){ return {...prev,foods:prev.foods.map(f=>f.id===partial.id?{...f,...partial,updatedAt:now}:f)}; }
-    const food:Food={id:uid('food'),name:partial.name,unit:partial.unit??'g',kcal:partial.kcal??0,fat:partial.fat??0,carbs:partial.carbs??0,protein:partial.protein??0,fiber:partial.fiber??0,active:true,createdAt:now,updatedAt:now};
-    return {...prev,foods:[...prev.foods,food]};
-  }),[]);
+    const existing=partial.id?state.foods.find(f=>f.id===partial.id):undefined;
+    const food:Food=existing
+      ? {...existing,...partial,name:partial.name,updatedAt:now}
+      : {id:uid('food'),name:partial.name,unit:partial.unit??'g',kcal:partial.kcal??0,fat:partial.fat??0,carbs:partial.carbs??0,protein:partial.protein??0,fiber:partial.fiber??0,active:true,createdAt:now,updatedAt:now};
+    setState(prev=>({...prev,foods:existing?prev.foods.map(f=>f.id===food.id?food:f):[...prev.foods,food]}));
+    if(authMode==='remote'&&userId) void saveSharedFood(food,userId).catch(err=>console.error('No se pudo guardar el alimento compartido.',err));
+  },[state.foods,authMode,userId]);
 
-  const deleteFood = useCallback((id:string)=>setState(prev=>({...prev,foods:prev.foods.map(f=>f.id===id?{...f,active:false}:f)})),[]);
-  const saveRecipe = useCallback((recipe:Recipe)=>setState(prev=>({...prev,recipes:prev.recipes.some(r=>r.id===recipe.id)?prev.recipes.map(r=>r.id===recipe.id?{...recipe,updatedAt:new Date().toISOString()}:r):[...prev.recipes,recipe]})),[]);
-  const deleteRecipe = useCallback((id:string)=>setState(prev=>({...prev,recipes:prev.recipes.map(r=>r.id===id?{...r,active:false}:r)})),[]);
+  const deleteFood = useCallback((id:string)=>{
+    setState(prev=>({...prev,foods:prev.foods.map(f=>f.id===id?{...f,active:false,updatedAt:new Date().toISOString()}:f)}));
+    if(authMode==='remote'&&userId) void deactivateSharedFood(id,userId).catch(err=>console.error('No se pudo desactivar el alimento compartido.',err));
+  },[authMode,userId]);
+
+  const saveRecipe = useCallback((recipe:Recipe)=>{
+    const saved={...recipe,updatedAt:new Date().toISOString()};
+    setState(prev=>({...prev,recipes:prev.recipes.some(r=>r.id===saved.id)?prev.recipes.map(r=>r.id===saved.id?saved:r):[...prev.recipes,saved]}));
+    if(authMode==='remote'&&userId) void saveSharedRecipe(saved,userId).catch(err=>console.error('No se pudo guardar la receta compartida.',err));
+  },[authMode,userId]);
+
+  const deleteRecipe = useCallback((id:string)=>{
+    setState(prev=>({...prev,recipes:prev.recipes.map(r=>r.id===id?{...r,active:false,updatedAt:new Date().toISOString()}:r)}));
+    if(authMode==='remote'&&userId) void deactivateSharedRecipe(id,userId).catch(err=>console.error('No se pudo desactivar la receta compartida.',err));
+  },[authMode,userId]);
+
   const saveGoals = useCallback((goals:Goals)=>setState(prev=>({...prev,goals})),[]);
   const saveShoppingItem = useCallback((item:ShoppingItem)=>setState(prev=>({...prev,shopping:prev.shopping.some(s=>s.id===item.id)?prev.shopping.map(s=>s.id===item.id?item:s):[...prev.shopping,item]})),[]);
   const deleteShoppingItem = useCallback((id:string)=>setState(prev=>({...prev,shopping:prev.shopping.filter(s=>s.id!==id)})),[]);
   const toggleShoppingItem = useCallback((id:string)=>setState(prev=>({...prev,shopping:prev.shopping.map(s=>s.id===id?{...s,checked:!s.checked,updatedAt:new Date().toISOString()}:s)})),[]);
 
-  const value = useMemo<AppContextValue>(()=>({state,ready,authMode,userId,userEmail,userRole,isAuthenticated:!hasSupabase||Boolean(userId),setState,getRecipeMacrosPer100,getDay,getDayTotals,addMealEntry,repeatMealFromPreviousDay,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem}),[state,ready,authMode,userId,userEmail,userRole,getRecipeMacrosPer100,getDay,getDayTotals,addMealEntry,repeatMealFromPreviousDay,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem]);
+  const value = useMemo<AppContextValue>(()=>({
+    state,ready,authMode,userId,userEmail,userRole,isAuthenticated:!hasSupabase||Boolean(userId),setState,getRecipeReferenceWeight,getRecipeMacrosPer100,getDay,getDayTotals,
+    addMealEntry,repeatMealFromPreviousDay,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem,
+  }),[state,ready,authMode,userId,userEmail,userRole,getRecipeReferenceWeight,getRecipeMacrosPer100,getDay,getDayTotals,addMealEntry,repeatMealFromPreviousDay,updateMealEntry,deleteMealEntry,markProteinNotified,saveFood,deleteFood,saveRecipe,deleteRecipe,saveGoals,saveShoppingItem,deleteShoppingItem,toggleShoppingItem]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
