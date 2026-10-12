@@ -64,6 +64,31 @@ function referenceWeight(recipe:Recipe) {
   return recipe.ingredients.reduce((sum,i)=>sum+i.amount,0);
 }
 
+function ingredientKind(ing: Recipe['ingredients'][number]) {
+  return ing.itemType ?? (ing.recipeId ? 'recipe' : 'food');
+}
+
+function recipeMacrosPer100(recipe:Recipe, foods:Food[], recipes:Recipe[], visited = new Set<string>()):Macros {
+  const weight = referenceWeight(recipe);
+  if (weight <= 0 || visited.has(recipe.id)) return emptyMacros();
+  const nextVisited = new Set(visited);
+  nextVisited.add(recipe.id);
+  let total = emptyMacros();
+
+  for (const ing of recipe.ingredients) {
+    if (ingredientKind(ing) === 'recipe') {
+      const child = recipes.find(r => r.id === ing.recipeId);
+      if (!child || nextVisited.has(child.id)) continue;
+      total = addMacros(total,scaleMacros(recipeMacrosPer100(child,foods,recipes,nextVisited),ing.amount/100));
+    } else {
+      const food = foods.find(f => f.id === ing.foodId);
+      if (!food) continue;
+      total = addMacros(total,scaleMacros(food,ing.amount/100));
+    }
+  }
+  return scaleMacros(total,100/weight);
+}
+
 function mergeCatalog(base:AppState,catalog:{foods:Food[];recipes:Recipe[]}):AppState {
   return {...base,foods:catalog.foods,recipes:catalog.recipes};
 }
@@ -192,16 +217,8 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
   const getRecipeReferenceWeight = useCallback((recipe:Recipe)=>referenceWeight(recipe),[]);
 
   const getRecipeMacrosPer100 = useCallback((recipe:Recipe):Macros => {
-    const weight = referenceWeight(recipe);
-    if (weight <= 0) return emptyMacros();
-    let total = emptyMacros();
-    for (const ing of recipe.ingredients) {
-      const food = state.foods.find(f => f.id === ing.foodId);
-      if (!food) continue;
-      total = addMacros(total,scaleMacros(food,ing.amount/100));
-    }
-    return scaleMacros(total,100/weight);
-  },[state.foods]);
+    return recipeMacrosPer100(recipe,state.foods,state.recipes);
+  },[state.foods,state.recipes]);
 
   const getDay = useCallback((date:string):DailyLog => {
     return state.logs[date] ?? { date,goals:{...state.goals},entries:[],proteinGoalNotified:false };
@@ -229,12 +246,7 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
         const weight = referenceWeight(recipe);
         if (weight <= 0) return prev;
         itemName = recipe.name;
-        let recipeTotal = emptyMacros();
-        for (const ing of recipe.ingredients) {
-          const food = prev.foods.find(f=>f.id===ing.foodId);
-          if (food) recipeTotal = addMacros(recipeTotal,scaleMacros(food,ing.amount/100));
-        }
-        macros = scaleMacros(scaleMacros(recipeTotal,100/weight),input.amount/100);
+        macros = scaleMacros(recipeMacrosPer100(recipe,prev.foods,prev.recipes),input.amount/100);
       }
       const entry:MealEntry = { id:uid('entry'),date:input.date,mealType:input.mealType,itemType:input.itemType,itemId:input.itemId,itemName,amount:input.amount,unit,macros,createdAt:new Date().toISOString() };
       const afterProtein = beforeProtein + macros.protein;
@@ -267,12 +279,7 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
         const weight = recipe ? referenceWeight(recipe) : 0;
         if (recipe && weight>0) {
           itemName=recipe.name; unit='g';
-          let total=emptyMacros();
-          for (const ing of recipe.ingredients) {
-            const food=state.foods.find(f=>f.id===ing.foodId);
-            if (food) total=addMacros(total,scaleMacros(food,ing.amount/100));
-          }
-          macros=scaleMacros(scaleMacros(total,100/weight),source.amount/100);
+          macros=scaleMacros(recipeMacrosPer100(recipe,state.foods,state.recipes),source.amount/100);
         }
       }
 
@@ -302,11 +309,7 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
         } else {
           const recipe=prev.recipes.find(r=>r.id===e.itemId);
           const weight=recipe?referenceWeight(recipe):0;
-          if(recipe&&weight>0) {
-            let total=emptyMacros();
-            for(const ing of recipe.ingredients){const food=prev.foods.find(f=>f.id===ing.foodId);if(food)total=addMacros(total,scaleMacros(food,ing.amount/100));}
-            macros=scaleMacros(scaleMacros(total,100/weight),amount/100);
-          }
+          if(recipe&&weight>0) macros=scaleMacros(recipeMacrosPer100(recipe,prev.foods,prev.recipes),amount/100);
         }
         return {...e,amount,macros};
       });

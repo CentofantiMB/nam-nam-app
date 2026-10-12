@@ -190,7 +190,13 @@ export async function loadSharedCatalog():Promise<SharedCatalog|null> {
   const ingredientRows = ingredientsRes.data ?? [];
   const recipes = (recipesRes.data ?? []).map((row:any) => mapRecipeRow(row, ingredientRows
     .filter((i:any) => i.recipe_id === row.id)
-    .map((i:any) => ({ id:i.id, foodId:i.food_id, amount:Number(i.amount ?? 0) }))));
+    .map((i:any) => ({
+      id:i.id,
+      itemType:(i.item_type === 'recipe' || i.child_recipe_id) ? 'recipe' : 'food',
+      foodId:i.food_id ?? undefined,
+      recipeId:i.child_recipe_id ?? undefined,
+      amount:Number(i.amount ?? 0),
+    }))));
   return { foods, recipes };
 }
 
@@ -235,9 +241,17 @@ export async function saveSharedRecipe(recipe:Recipe,userId?:string|null) {
   const { error:deleteError } = await supabase.from('recipe_ingredients').delete().eq('recipe_id',recipe.id);
   if (deleteError) throw deleteError;
   if (recipe.ingredients.length) {
-    const { error:ingredientError } = await supabase.from('recipe_ingredients').insert(recipe.ingredients.map(i => ({
-      id:i.id,recipe_id:recipe.id,food_id:i.foodId,amount:i.amount,
-    })));
+    const { error:ingredientError } = await supabase.from('recipe_ingredients').insert(recipe.ingredients.map(i => {
+      const itemType = i.itemType ?? (i.recipeId ? 'recipe' : 'food');
+      return {
+        id:i.id,
+        recipe_id:recipe.id,
+        item_type:itemType,
+        food_id:itemType === 'food' ? (i.foodId ?? null) : null,
+        child_recipe_id:itemType === 'recipe' ? (i.recipeId ?? null) : null,
+        amount:i.amount,
+      };
+    }));
     if (ingredientError) throw ingredientError;
   }
 }

@@ -355,16 +355,65 @@ function RecipesView(){
 function RecipeEditor({recipe,onClose}:{recipe:Recipe|null;onClose:()=>void}){
   const app=useApp(); const now=new Date().toISOString();
   const [draft,setDraft]=useState<Recipe>(recipe??{id:uid('recipe'),name:'',rawWeight:0,finalWeight:0,notes:'',active:true,ingredients:[],createdAt:now,updatedAt:now});
-  const [foodToAdd,setFoodToAdd]=useState(app.state.foods.find(f=>f.active)?.id??''); const [amount,setAmount]=useState('');
+  const firstFood=app.state.foods.find(f=>f.active);
+  const [ingredientToAdd,setIngredientToAdd]=useState(firstFood?`food:${firstFood.id}`:'');
+  const [amount,setAmount]=useState('');
+
+  const ingredientKind=(i:Recipe['ingredients'][number])=>i.itemType??(i.recipeId?'recipe':'food');
   const ingredientWeight=draft.ingredients.reduce((sum,i)=>sum+i.amount,0);
   const referenceWeight=draft.finalWeight>0?draft.finalWeight:ingredientWeight;
-  const calc=()=>{if(referenceWeight<=0)return emptyMacros();let total=emptyMacros();for(const i of draft.ingredients){const f=app.state.foods.find(x=>x.id===i.foodId);if(f)total=addMacros(total,{kcal:f.kcal*i.amount/100,fat:f.fat*i.amount/100,carbs:f.carbs*i.amount/100,protein:f.protein*i.amount/100,fiber:f.fiber*i.amount/100});}return {kcal:total.kcal*100/referenceWeight,fat:total.fat*100/referenceWeight,carbs:total.carbs*100/referenceWeight,protein:total.protein*100/referenceWeight,fiber:total.fiber*100/referenceWeight};};
-  const macros=calc();
-  const addIng=()=>{const a=parseNum(amount);if(!foodToAdd||a<=0)return;setDraft(d=>({...d,ingredients:[...d.ingredients,{id:uid('ri'),foodId:foodToAdd,amount:a}]}));setAmount('')};
+  const macros=app.getRecipeMacrosPer100(draft);
+  const totalKcal=referenceWeight>0?macros.kcal*referenceWeight/100:0;
+
+  const recipeContains=(startId:string,targetId:string,seen=new Set<string>()):boolean=>{
+    if(startId===targetId)return true;
+    if(seen.has(startId))return false;
+    const next=new Set(seen); next.add(startId);
+    const r=app.state.recipes.find(x=>x.id===startId);
+    if(!r)return false;
+    return r.ingredients.some(i=>ingredientKind(i)==='recipe'&&Boolean(i.recipeId)&&recipeContains(i.recipeId!,targetId,next));
+  };
+
+  const recipeOptions=app.state.recipes
+    .filter(r=>r.active&&r.id!==draft.id&&!recipeContains(r.id,draft.id))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+
+  const nameForIngredient=(i:Recipe['ingredients'][number])=>{
+    if(ingredientKind(i)==='recipe')return app.state.recipes.find(r=>r.id===i.recipeId)?.name??'Receta no disponible';
+    return app.state.foods.find(f=>f.id===i.foodId)?.name??'Alimento eliminado';
+  };
+
+  const proportionalDetails=(i:Recipe['ingredients'][number])=>{
+    if(ingredientKind(i)!=='recipe'||!i.recipeId)return [] as {id:string;name:string;amount:number;kind:string}[];
+    const nested=app.state.recipes.find(r=>r.id===i.recipeId);
+    if(!nested)return [];
+    const nestedWeight=app.getRecipeReferenceWeight(nested);
+    if(nestedWeight<=0)return [];
+    const factor=i.amount/nestedWeight;
+    return nested.ingredients.map(child=>({
+      id:child.id,
+      name:nameForIngredient(child),
+      amount:child.amount*factor,
+      kind:ingredientKind(child),
+    }));
+  };
+
+  const addIng=()=>{
+    const a=parseNum(amount); if(!ingredientToAdd||a<=0)return;
+    const [kind,id]=ingredientToAdd.split(':',2);
+    if(kind==='recipe'){
+      if(id===draft.id||recipeContains(id,draft.id))return;
+      setDraft(d=>({...d,ingredients:[...d.ingredients,{id:uid('ri'),itemType:'recipe',recipeId:id,amount:a}]}));
+    }else{
+      setDraft(d=>({...d,ingredients:[...d.ingredients,{id:uid('ri'),itemType:'food',foodId:id,amount:a}]}));
+    }
+    setAmount('');
+  };
+
   return <Modal title={recipe?'Editar receta':'Nueva receta'} onClose={onClose} wide>
     <div className="recipe-editor"><div className="recipe-form"><label className="field"><span>Nombre</span><input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))} placeholder="Ej. Pan integral"/></label><div className="form-grid"><NumField label="Peso inicial / crudo (g) · opcional" value={String(draft.rawWeight||'')} set={v=>setDraft(d=>({...d,rawWeight:parseNum(v)}))}/><NumField label="Peso final cocinado (g) · opcional" value={String(draft.finalWeight||'')} set={v=>setDraft(d=>({...d,finalWeight:parseNum(v)}))}/></div><p className="field-help">Si la preparación no pierde peso o no necesitás medirla antes y después, dejá ambos campos vacíos. Usaremos automáticamente la suma de los ingredientes como peso de referencia.</p><label className="field"><span>Notas</span><textarea value={draft.notes} onChange={e=>setDraft(d=>({...d,notes:e.target.value}))} placeholder="Opcional"/></label>
-      <div className="ingredient-box"><h4>Ingredientes</h4>{draft.ingredients.length===0?<Empty text="Agregá el primer ingrediente."/>:draft.ingredients.map(i=>{const f=app.state.foods.find(x=>x.id===i.foodId);return <div className="ingredient-row" key={i.id}><div><strong>{f?.name??'Alimento eliminado'}</strong><span>{formatNumber(i.amount,1)} g</span></div><button className="icon-btn" onClick={()=>setDraft(d=>({...d,ingredients:d.ingredients.filter(x=>x.id!==i.id)}))}><Icon name="trash"/></button></div>})}<div className="ingredient-add"><select value={foodToAdd} onChange={e=>setFoodToAdd(e.target.value)}>{app.state.foods.filter(f=>f.active).sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option value={f.id} key={f.id}>{f.name}</option>)}</select><input inputMode="decimal" placeholder="gramos" value={amount} onChange={e=>setAmount(e.target.value)}/><button onClick={addIng}>Agregar</button></div></div>
-      </div><aside className="recipe-preview"><p className="eyebrow">Por 100 g de preparación</p><div className="big-kcal">{formatNumber(macros.kcal,0)}<span>kcal</span></div><div className="preview-grid"><span><b>{formatNumber(macros.protein,1)}</b> proteína</span><span><b>{formatNumber(macros.carbs,1)}</b> carbos</span><span><b>{formatNumber(macros.fat,1)}</b> grasas</span><span><b>{formatNumber(macros.fiber,1)}</b> fibra</span></div><div className="weight-note">Ingredientes: {formatNumber(ingredientWeight,0)} g<br/>Inicial/crudo: {draft.rawWeight>0?`${formatNumber(draft.rawWeight,0)} g`:'no indicado'}<br/>Peso de referencia: {formatNumber(referenceWeight,0)} g {draft.finalWeight>0?'(final medido)':'(automático)'}</div></aside></div>
+      <div className="ingredient-box"><div className="ingredient-box-head"><div><h4>Ingredientes</h4><p>Podés combinar alimentos y recetas que ya tengas preparadas.</p></div></div>{draft.ingredients.length===0?<Empty text="Agregá el primer alimento o receta."/>:draft.ingredients.map(i=>{const kind=ingredientKind(i);const details=proportionalDetails(i);return <div className={`ingredient-row ${kind==='recipe'?'nested-recipe-row':''}`} key={i.id}><div className="ingredient-main"><div className="ingredient-line"><strong>{nameForIngredient(i)}</strong>{kind==='recipe'&&<span className="ingredient-badge">RECETA</span>}<span>{formatNumber(i.amount,1)} g</span></div>{kind==='recipe'&&details.length>0&&<div className="nested-breakdown"><b>En esos {formatNumber(i.amount,1)} g hay aprox.:</b><div>{details.map(d=><small key={d.id}>{d.name} <strong>{formatNumber(d.amount,1)} g</strong></small>)}</div></div>}</div><button className="icon-btn" onClick={()=>setDraft(d=>({...d,ingredients:d.ingredients.filter(x=>x.id!==i.id)}))}><Icon name="trash"/></button></div>})}<div className="ingredient-add"><select value={ingredientToAdd} onChange={e=>setIngredientToAdd(e.target.value)}><optgroup label="Alimentos">{app.state.foods.filter(f=>f.active).sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option value={`food:${f.id}`} key={`food:${f.id}`}>{f.name}</option>)}</optgroup>{recipeOptions.length>0&&<optgroup label="Recetas">{recipeOptions.map(r=><option value={`recipe:${r.id}`} key={`recipe:${r.id}`}>◇ {r.name}</option>)}</optgroup>}</select><input inputMode="decimal" placeholder="gramos" value={amount} onChange={e=>setAmount(e.target.value)}/><button onClick={addIng}>Agregar</button></div><p className="ingredient-help">Cuando agregás una receta, indicá cuántos gramos de esa preparación usaste. Sus macros se calculan automáticamente y el detalle muestra la proporción aproximada de sus componentes.</p></div>
+      </div><aside className="recipe-preview"><p className="eyebrow">Por 100 g de preparación</p><div className="big-kcal">{formatNumber(macros.kcal,0)}<span>kcal</span></div><div className="preview-grid"><span><b>{formatNumber(macros.protein,1)}</b> proteína</span><span><b>{formatNumber(macros.carbs,1)}</b> carbos</span><span><b>{formatNumber(macros.fat,1)}</b> grasas</span><span><b>{formatNumber(macros.fiber,1)}</b> fibra</span></div><div className="recipe-total-note"><span>Receta completa</span><strong>{formatNumber(totalKcal,0)} kcal</strong></div><div className="weight-note">Ingredientes: {formatNumber(ingredientWeight,0)} g<br/>Inicial/crudo: {draft.rawWeight>0?`${formatNumber(draft.rawWeight,0)} g`:'no indicado'}<br/>Peso de referencia: {formatNumber(referenceWeight,0)} g {draft.finalWeight>0?'(final medido)':'(automático)'}</div></aside></div>
     <button className="primary full" disabled={!draft.name.trim()||draft.ingredients.length===0||referenceWeight<=0} onClick={()=>{app.saveRecipe(draft);onClose()}}>Guardar receta</button>{recipe&&<button className="danger-link full" onClick={()=>{app.deleteRecipe(recipe.id);onClose()}}>Desactivar receta</button>}
   </Modal>;
 }

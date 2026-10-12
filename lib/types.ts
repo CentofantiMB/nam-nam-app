@@ -19,7 +19,10 @@ export type Food = Macros & {
 
 export type RecipeIngredient = {
   id: string;
-  foodId: string;
+  /** Backward compatible: old recipes may omit itemType and are treated as food. */
+  itemType?: 'food' | 'recipe';
+  foodId?: string;
+  recipeId?: string;
   amount: number;
 };
 
