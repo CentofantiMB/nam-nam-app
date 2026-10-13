@@ -237,7 +237,17 @@ function TodayView({date,setDate,onAdd,onEdit,onRepeat}:{date:string;setDate:(d:
         const mealMacros=entries.reduce((a,e)=>addMacros(a,e.macros),emptyMacros());
         return <article className="meal-card" key={meal}>
           <div className="meal-head">
-            <div><h3>{meal}</h3><span>{entries.length?`${formatNumber(mealMacros.kcal,0)} kcal`:'Sin registros'}</span></div>
+            <div className="meal-head-copy">
+              <h3>{meal}</h3>
+              {entries.length?
+                <div className="meal-macro-summary" aria-label={`Resumen nutricional de ${meal}`}>
+                  <span className="meal-kcal"><strong>{formatNumber(mealMacros.kcal,0)}</strong> kcal</span>
+                  <span className="meal-macro protein"><b>P</b>{formatNumber(mealMacros.protein,1)} g</span>
+                  <span className="meal-macro carbs"><b>C</b>{formatNumber(mealMacros.carbs,1)} g</span>
+                  <span className="meal-macro fat"><b>G</b>{formatNumber(mealMacros.fat,1)} g</span>
+                </div>
+                :<span className="meal-empty-label">Sin registros</span>}
+            </div>
             <div className="meal-head-actions">
               <button className="repeat-meal" disabled={!yesterdayEntries.length} onClick={()=>onRepeat(meal)} title={yesterdayEntries.length?`Repetir ${meal.toLowerCase()} de ayer`:`Ayer no hubo registros en ${meal.toLowerCase()}`}><Icon name="repeat"/><span>Repetir ayer</span></button>
               <button className="round-add" onClick={()=>onAdd(meal)} title={`Agregar a ${meal}`}><Icon name="plus"/></button>
