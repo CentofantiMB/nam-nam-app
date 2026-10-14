@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from './AppProvider';
-import { Food, Goals, Macros, MealEntry, MealType, Recipe, ShoppingItem, UserProfile } from '@/lib/types';
+import { DailyLog, Food, Goals, Macros, MealEntry, MealType, Recipe, ShoppingItem, UserProfile } from '@/lib/types';
 import { addMacros, emptyMacros, formatDateLong, formatNumber, localISODate, progressState, round, uid } from '@/lib/utils';
 import { hasSupabase } from '@/lib/supabase';
 import { loadProfiles, signInWithPassword, signOut, signUpWithPassword } from '@/lib/persistence';
+import { downloadNutritionWorkbook } from '@/lib/excelExport';
 
-type View = 'today'|'history'|'stats'|'recipes'|'foods'|'shopping'|'users'|'settings';
+type View = 'today'|'history'|'stats'|'recipes'|'foods'|'shopping'|'export'|'users'|'settings';
 const meals:MealType[] = ['Desayuno','Colación 1','Almuerzo','Colación 2','Merienda','Cena'];
 const macroLabels:{key:keyof Macros;label:string;unit:string}[] = [
   {key:'protein',label:'Proteína',unit:'g'},
@@ -32,6 +33,7 @@ function Icon({name}:{name:string}){
     users:<><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3.5 2.4-5.3 5.5-5.3s5 1.8 5.5 5.3"/><circle cx="17" cy="9" r="2.2"/><path d="M15.7 14.8c2.7-.5 4.4.8 4.8 3.6"/></>,
     settings:<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
     more:<><path d="M4 7h16"/><path d="M7 12h10"/><path d="M10 17h4"/></>,
+    export:<><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 18v3h14v-3"/></>,
     plus:<path d="M12 5v14M5 12h14"/>,
     search:<><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></>,
     close:<path d="m6 6 12 12M18 6 6 18"/>,
@@ -43,6 +45,41 @@ function Icon({name}:{name:string}){
     repeat:<><path d="M20 6v6h-6"/><path d="M4 18v-6h6"/><path d="M6.5 8.5A7 7 0 0 1 18.8 7L20 12"/><path d="M17.5 15.5A7 7 0 0 1 5.2 17L4 12"/></>,
   };
   return <span aria-hidden className="icon"><svg {...common}>{paths[name]??<circle cx="12" cy="12" r="2"/>}</svg></span>;
+}
+
+
+function PenguinMascot({size='mini',mood='wave'}:{size?:'mini'|'medium'|'large';mood?:'wave'|'celebrate'|'calm'}){
+  return <span className={`penguin ${size} ${mood}`} aria-label="Pingüino Ñam Ñam" role="img">
+    <svg viewBox="0 0 96 96" aria-hidden="true">
+      <ellipse className="penguin-body" cx="48" cy="54" rx="29" ry="34"/>
+      <ellipse className="penguin-belly" cx="48" cy="58" rx="20" ry="25"/>
+      <circle className="penguin-eye" cx="39" cy="39" r="3.2"/><circle className="penguin-eye" cx="57" cy="39" r="3.2"/>
+      <path className="penguin-beak" d="M43 46 48 42l5 4-5 5Z"/>
+      <path className="penguin-wing left" d="M21 48c-10 7-11 20-4 26 5-8 10-13 15-16Z"/>
+      <path className="penguin-wing right" d="M75 47c11 3 15 12 12 21-6-4-11-7-17-9Z"/>
+      <ellipse className="penguin-foot" cx="37" cy="87" rx="10" ry="4"/><ellipse className="penguin-foot" cx="59" cy="87" rx="10" ry="4"/>
+    </svg>
+  </span>;
+}
+
+function shiftISO(date:string,delta:number){const d=new Date(`${date}T12:00:00`);d.setDate(d.getDate()+delta);return localISODate(d);}
+function getStreakStats(logs:Record<string,DailyLog>){
+  const active=new Set(Object.values(logs).filter(l=>l.entries.length>0).map(l=>l.date));
+  const today=localISODate();
+  let anchor=active.has(today)?today:(active.has(shiftISO(today,-1))?shiftISO(today,-1):'');
+  let current=0;
+  while(anchor&&active.has(anchor)){current++;anchor=shiftISO(anchor,-1);}
+  const sorted=[...active].sort(); let best=0,run=0,prev='';
+  for(const date of sorted){if(prev&&date===shiftISO(prev,1))run++;else run=1;best=Math.max(best,run);prev=date;}
+  return {current,best,total:active.size};
+}
+
+function BootScreen(){
+  return <div className="boot penguin-boot"><PenguinMascot size="large" mood="wave"/><strong>Ñam Ñam</strong><p>Preparando tu día…</p></div>;
+}
+
+function StreakCelebration({days,onClose}:{days:number;onClose:()=>void}){
+  return <div className="streak-celebration" role="status" aria-live="polite"><div className="streak-card"><button className="streak-close" onClick={onClose}>×</button><div className="streak-fire">🔥</div><PenguinMascot size="large" mood="celebrate"/><p className="eyebrow">Racha activa</p><strong>{days} {days===1?'día':'días'} seguidos</strong><span>¡Seguiste registrando tu alimentación!</span></div></div>;
 }
 
 function ProgressBar({value,goal,macro='kcal'}:{value:number;goal:number;macro:keyof Goals}){
@@ -143,12 +180,25 @@ export default function NamNamApp(){
   const [editingEntry,setEditingEntry]=useState<MealEntry|null>(null);
   const [toast,setToast]=useState<{title:string;body:string}|null>(null);
   const [moreOpen,setMoreOpen]=useState(false);
+  const [introDone,setIntroDone]=useState(false);
+  const [streakCelebration,setStreakCelebration]=useState<number|null>(null);
+  const streakStats=useMemo(()=>getStreakStats(app.state.logs),[app.state.logs]);
+  const todayEntryCount=app.state.logs[localISODate()]?.entries.length??0;
 
-  if(!app.ready) return <div className="boot"><div className="logo-mark">Ñ</div><p>Cargando Ñam Ñam…</p></div>;
+  useEffect(()=>{const t=setTimeout(()=>setIntroDone(true),1300);return()=>clearTimeout(t);},[]);
+  useEffect(()=>{
+    if(!app.ready||!app.isAuthenticated||todayEntryCount===0||typeof window==='undefined')return;
+    const today=localISODate(); const key=`nam-nam-streak-shown:${app.userId??'local'}:${today}`;
+    if(window.localStorage.getItem(key))return;
+    const stats=getStreakStats(app.state.logs); if(stats.current<=0)return;
+    window.localStorage.setItem(key,'1'); setStreakCelebration(stats.current);
+  },[app.ready,app.isAuthenticated,app.userId,todayEntryCount,app.state.logs]);
+
+  if(!app.ready||!introDone) return <BootScreen/>;
   if(hasSupabase && !app.isAuthenticated) return <AuthScreen/>;
 
   const nav:(readonly [View,string,string])[]=[
-    ['today','Hoy','today'],['history','Historial','history'],['stats','Evolución','stats'],['recipes','Recetas','recipes'],['foods','Alimentos','foods'],['shopping','Súper','shopping'],
+    ['today','Hoy','today'],['history','Historial','history'],['stats','Evolución','stats'],['recipes','Recetas','recipes'],['foods','Alimentos','foods'],['shopping','Súper','shopping'],['export','Exportar','export'],
     ...(app.userRole==='admin' ? [['users','Usuarios','users'] as const] : []),
     ['settings','Ajustes','settings']
   ];
@@ -177,19 +227,20 @@ export default function NamNamApp(){
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><div className="brand-icon">Ñ</div><div><strong>Ñam Ñam</strong><small>nutrición simple</small></div></div>
+      <div className="brand"><PenguinMascot size="mini" mood="calm"/><div><strong>Ñam Ñam</strong><small>nutrición simple</small></div></div><div className="side-streak"><span>🔥</span><b>{streakStats.current}</b><small>racha actual</small></div>
       <nav>{nav.map(([id,label,icon])=><button key={id} className={view===id?'active':''} onClick={()=>setView(id)}><Icon name={icon}/><span>{label}</span></button>)}</nav>
       <div className="side-foot"><span className={`sync-dot ${app.authMode}`}/><div><b>{app.userRole==='admin'?'Administrador':app.userEmail??'Modo local'}</b><small>{app.authMode==='remote'?'Sincronizado':'Modo local'}</small></div></div>
     </aside>
 
     <main className="main">
-      <div className="mobile-top"><div className="brand-icon small">Ñ</div><div><strong>Ñam Ñam</strong><small>{nav.find(n=>n[0]===view)?.[1]}</small></div></div>
+      <div className="mobile-top"><PenguinMascot size="mini" mood="calm"/><div><strong>Ñam Ñam</strong><small>{nav.find(n=>n[0]===view)?.[1]}</small></div><div className="mobile-streak">🔥 <b>{streakStats.current}</b></div></div>
       {view==='today' && <TodayView date={date} setDate={setDate} onAdd={setAddMeal} onEdit={setEditingEntry} onRepeat={handleRepeat}/>} 
       {view==='history' && <HistoryView onOpenDate={d=>{setDate(d);setView('today')}}/>}
       {view==='stats' && <StatsView/>}
       {view==='recipes' && <RecipesView/>}
       {view==='foods' && <FoodsView/>}
       {view==='shopping' && <ShoppingView/>}
+      {view==='export' && <ExportView/>}
       {view==='users' && app.userRole==='admin' && <UsersView/>}
       {view==='settings' && <SettingsView/>}
     </main>
@@ -203,6 +254,7 @@ export default function NamNamApp(){
     {editingEntry && <EditEntryModal entry={editingEntry} onClose={()=>setEditingEntry(null)} onSave={amount=>{app.updateMealEntry(date,editingEntry.id,amount);setEditingEntry(null)}} onDelete={()=>{app.deleteMealEntry(date,editingEntry.id);setEditingEntry(null)}}/>}
     {moreOpen && <MoreMenu items={mobileExtra} active={view} onSelect={setView} onClose={()=>setMoreOpen(false)}/>}
     {toast && <Toast onClose={()=>setToast(null)}><strong>{toast.title}</strong><span> {toast.body}</span></Toast>}
+    {streakCelebration!==null&&<StreakCelebration days={streakCelebration} onClose={()=>setStreakCelebration(null)}/>}
   </div>;
 }
 
@@ -309,12 +361,13 @@ function HistoryView({onOpenDate}:{onOpenDate:(d:string)=>void}){
 }
 
 function StatsView(){
-  const app=useApp(); const [period,setPeriod]=useState<7|30|90>(7);
+  const app=useApp(); const [period,setPeriod]=useState<7|30|90>(7); const streak=getStreakStats(app.state.logs);
   const dates=Array.from({length:period},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(period-1-i));return localISODate(d)});
   const series=dates.map(date=>{const log=app.state.logs[date];const totals=log?log.entries.reduce((a,e)=>addMacros(a,e.macros),emptyMacros()):emptyMacros();return {date,...totals,goal:log?.goals??app.state.goals,has:Boolean(log)}});
   const withData=series.filter(s=>s.has); const avg=(k:keyof Macros)=>withData.length?withData.reduce((a,s)=>a+s[k],0)/withData.length:0;
   const goodDays=withData.filter(s=>{const pct=s.kcal/s.goal.kcal*100;return pct>=90&&pct<=105}).length;
   return <div className="page fade-in"><header className="page-head"><div><p className="eyebrow">Evolución</p><h1>Cómo venís</h1></div><div className="segmented">{([7,30,90] as const).map(p=><button key={p} className={period===p?'active':''} onClick={()=>setPeriod(p)}>{p} días</button>)}</div></header>
+    <section className="streak-progress-card"><div><PenguinMascot size="medium" mood={streak.current>0?'celebrate':'calm'}/></div><div><p className="eyebrow">Racha de registro</p><strong>🔥 {streak.current} {streak.current===1?'día':'días'}</strong><span>Mejor racha: {streak.best} · Días registrados: {streak.total}</span></div></section>
     <section className="stat-grid"><div className="stat-card"><span>Promedio kcal</span><strong>{formatNumber(avg('kcal'),0)}</strong><small>por día registrado</small></div><div className="stat-card"><span>Proteína promedio</span><strong>{formatNumber(avg('protein'),1)} g</strong><small>por día registrado</small></div><div className="stat-card"><span>Fibra promedio</span><strong>{formatNumber(avg('fiber'),1)} g</strong><small>por día registrado</small></div><div className="stat-card"><span>Días en objetivo</span><strong>{goodDays} / {withData.length}</strong><small>90–105% kcal</small></div></section>
     <section className="chart-card"><div className="section-title"><div><p className="eyebrow">Calorías</p><h2>Consumo diario</h2></div></div><LineChart data={series.map(s=>s.kcal)} goal={app.state.goals.kcal}/></section>
     <section className="chart-card"><div className="section-title"><div><p className="eyebrow">Proteína</p><h2>Proteína diaria</h2></div></div><LineChart data={series.map(s=>s.protein)} goal={app.state.goals.protein}/></section>
@@ -428,6 +481,24 @@ function RecipeEditor({recipe,onClose}:{recipe:Recipe|null;onClose:()=>void}){
   </Modal>;
 }
 
+
+function ExportView(){
+  const app=useApp();
+  const registered=Object.values(app.state.logs).filter(l=>l.entries.length>0).sort((a,b)=>a.date.localeCompare(b.date));
+  const first=registered[0]?.date??localISODate(); const last=registered.at(-1)?.date??localISODate();
+  const [from,setFrom]=useState(first); const [to,setTo]=useState(last); const [message,setMessage]=useState('');
+  const selected=registered.filter(l=>l.date>=from&&l.date<=to); const entryCount=selected.reduce((s,l)=>s+l.entries.length,0);
+  const run=()=>{try{const r=downloadNutritionWorkbook(app.state.logs,from,to);setMessage(`Excel generado: ${r.days} días y ${r.entries} registros.`);}catch(err){setMessage(err instanceof Error?err.message:'No se pudo generar el Excel.');}};
+  return <div className="page fade-in"><header className="page-head"><div><p className="eyebrow">Tus datos</p><h1>Exportar a Excel</h1></div></header>
+    <section className="export-card"><div className="export-hero"><div className="export-icon"><Icon name="export"/></div><div><h2>Consumo nutricional</h2><p>Generá un Excel legible usando los valores históricos guardados al momento de registrar cada comida.</p></div></div>
+      <div className="export-dates"><label className="field"><span>Desde</span><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label className="field"><span>Hasta</span><input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label></div>
+      <div className="export-summary"><span><b>{selected.length}</b> días</span><span><b>{entryCount}</b> registros</span><span><b>2</b> hojas de cálculo</span></div>
+      <div className="export-sheets"><div><strong>Detalle diario</strong><span>Cada fecha separada por desayuno, colaciones, almuerzo, merienda y cena, con alimentos, cantidades y macros.</span></div><div><strong>Resumen diario</strong><span>Una fila por día con totales, objetivos y diferencias para analizar o hacer gráficos.</span></div></div>
+      <button className="primary export-button" disabled={!from||!to||from>to||selected.length===0} onClick={run}><Icon name="export"/> Exportar .xlsx</button>{message&&<p className="export-message">{message}</p>}
+    </section>
+  </div>;
+}
+
 function ShoppingView(){
   const app=useApp(); const [q,setQ]=useState(''); const [editing,setEditing]=useState<ShoppingItem|null|undefined>(undefined);
   const list=app.state.shopping.filter(s=>s.name.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>Number(a.checked)-Number(b.checked)||a.name.localeCompare(b.name));
@@ -455,7 +526,7 @@ function UsersView(){
 
   return <div className="page fade-in"><header className="page-head"><div><p className="eyebrow">Administración</p><h1>Usuarios</h1></div></header>
     <section className="settings-card users-card"><div className="section-title"><div><p className="eyebrow">Cuentas</p><h2>Usuarios registrados</h2></div><span className="muted">{users.length} cuentas</span></div>
-      <p className="muted paragraph">Cada cuenta tiene su propio historial, objetivos, alimentos, recetas y lista del súper. Desde esta vista solo se muestran las cuentas; las contraseñas nunca son visibles.</p>
+      <p className="muted paragraph">Cada cuenta conserva su propio consumo, historial, objetivos y lista del súper. La base de alimentos y recetas es compartida entre todos. Las contraseñas nunca son visibles.</p>
       {loading?<Empty text="Cargando usuarios…"/>:error?<p className="form-msg">{error}</p>:<div className="users-list">{users.map(u=><div className="user-row" key={u.id}><div className={`user-avatar ${u.role}`}>{u.role==='admin'?'A':'U'}</div><div className="user-main"><strong>{u.email}</strong><span>Creado {new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(u.createdAt))}</span></div><span className={`role-pill ${u.role}`}>{u.role==='admin'?'Administrador':'Usuario'}</span></div>)}</div>}
     </section>
   </div>;
@@ -465,7 +536,7 @@ function SettingsView(){
   const app=useApp(); const [goals,setGoals]=useState(app.state.goals); const [saved,setSaved]=useState(false);
   const set=(k:keyof Goals,v:string)=>setGoals(g=>({...g,[k]:parseNum(v)}));
   return <div className="page fade-in"><header className="page-head"><div><p className="eyebrow">Preferencias</p><h1>Ajustes</h1></div></header><div className="settings-grid"><section className="settings-card"><div className="section-title"><div><p className="eyebrow">Objetivos</p><h2>Metas diarias</h2></div></div><p className="muted paragraph">Los objetivos se copian al registro de cada nuevo día para que el historial conserve la meta que estaba vigente.</p><div className="form-grid goals"><NumField label="Calorías (kcal)" value={String(goals.kcal)} set={v=>set('kcal',v)}/><NumField label="Proteína (g)" value={String(goals.protein)} set={v=>set('protein',v)}/><NumField label="Carbohidratos (g)" value={String(goals.carbs)} set={v=>set('carbs',v)}/><NumField label="Grasas (g)" value={String(goals.fat)} set={v=>set('fat',v)}/><NumField label="Fibra (g)" value={String(goals.fiber)} set={v=>set('fiber',v)}/></div><button className="primary" onClick={()=>{app.saveGoals(goals);setSaved(true);setTimeout(()=>setSaved(false),1800)}}>{saved?'✓ Guardado':'Guardar objetivos'}</button></section>
-      <section className="settings-card"><div className="section-title"><div><p className="eyebrow">Cuenta</p><h2>{app.authMode==='remote'?'Sesión activa':'Tus datos'}</h2></div></div>{!hasSupabase?<><p className="muted paragraph">La aplicación funciona en modo local. Configurá Supabase para habilitar cuentas y sincronización.</p><div className="status-pill">● Modo local activo</div></>:<><div className="account-summary"><div className={`user-avatar ${app.userRole??'user'}`}>{app.userRole==='admin'?'A':'U'}</div><div><strong>{app.userEmail}</strong><span>{app.userRole==='admin'?'Administrador':'Usuario'} · sincronización activa</span></div></div><p className="muted paragraph">Tus datos están aislados de las demás cuentas y se sincronizan automáticamente con Supabase.</p><button className="secondary" onClick={()=>signOut()}>Cerrar sesión</button></>}</section>
+      <section className="settings-card"><div className="section-title"><div><p className="eyebrow">Cuenta</p><h2>{app.authMode==='remote'?'Sesión activa':'Tus datos'}</h2></div></div>{!hasSupabase?<><p className="muted paragraph">La aplicación funciona en modo local. Configurá Supabase para habilitar cuentas y sincronización.</p><div className="status-pill">● Modo local activo</div></>:<><div className="account-summary"><div className={`user-avatar ${app.userRole??'user'}`}>{app.userRole==='admin'?'A':'U'}</div><div><strong>{app.userEmail}</strong><span>{app.userRole==='admin'?'Administrador':'Usuario'} · sincronización activa</span></div></div><p className="muted paragraph">Tu consumo e historial son privados y se sincronizan automáticamente. Los alimentos y recetas forman un catálogo compartido entre las cuentas.</p><button className="secondary" onClick={()=>signOut()}>Cerrar sesión</button></>}</section>
       <section className="settings-card future"><div className="section-title"><div><p className="eyebrow">Próximamente</p><h2>Entrenamiento</h2></div></div><p className="muted paragraph">La estructura del proyecto deja reservado el módulo de sesiones, ejercicios, series, repeticiones, duración y gasto calórico estimado. No se mezcla todavía con el objetivo alimentario.</p><div className="future-icon">⌁</div></section></div>
   </div>;
 }
