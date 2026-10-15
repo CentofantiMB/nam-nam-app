@@ -3,7 +3,7 @@ import { DailyLog, Macros, MealEntry, MealType } from './types';
 const MEALS:MealType[]=['Desayuno','Colación 1','Almuerzo','Colación 2','Merienda','Cena'];
 
 type Cell = { value:string|number; style?:number; type?:'s'|'n' };
-type SheetModel = { rows:Cell[][]; merges:string[]; widths:number[] };
+type SheetModel = { rows:Cell[][]; merges:string[]; widths:number[]; autoFilter?:string };
 
 function esc(value:string){
   return value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
@@ -17,34 +17,45 @@ function totals(entries:MealEntry[]){return entries.reduce((a,e)=>add(a,e.macros
 function displayDate(date:string){
   return new Intl.DateTimeFormat('es-AR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(`${date}T12:00:00`));
 }
+function excelDateSerial(date:string){
+  const [year,month,day]=date.split('-').map(Number);
+  return Math.floor((Date.UTC(year,month-1,day)-Date.UTC(1899,11,30))/86400000);
+}
 function round(v:number,d=2){const p=10**d;return Math.round((v+Number.EPSILON)*p)/p;}
 function num(v:number,style=5):Cell{return {value:round(v,2),type:'n',style};}
+function dateCell(v:string):Cell{return {value:excelDateSerial(v),type:'n',style:9};}
 function txt(v:string,style=0):Cell{return {value:v,type:'s',style};}
 
 function detailSheet(logs:DailyLog[]):SheetModel{
-  const rows:Cell[][]=[]; const merges:string[]=[];
-  const pushMerged=(label:string,style:number)=>{const r=rows.length+1;rows.push([txt(label,style)]);merges.push(`A${r}:H${r}`);};
+  const rows:Cell[][]=[];
+  rows.push(['Fecha','Comida','Alimento','Cantidad','Unidad','Kcal','Proteína (g)','Carbos (g)','Grasas (g)','Fibra (g)'].map(v=>txt(v,1)));
+
   for(const log of logs){
-    pushMerged(displayDate(log.date),2);
     for(const meal of MEALS){
       const entries=log.entries.filter(e=>e.mealType===meal);
-      if(!entries.length) continue;
-      pushMerged(meal.toUpperCase(),3);
-      rows.push(['Alimento','Cantidad','Unidad','Kcal','Proteína (g)','Carbos (g)','Grasas (g)','Fibra (g)'].map(v=>txt(v,1)));
       for(const e of entries){
-        rows.push([txt(e.itemName),num(e.amount),txt(e.unit),num(e.macros.kcal),num(e.macros.protein),num(e.macros.carbs),num(e.macros.fat),num(e.macros.fiber)]);
+        rows.push([
+          dateCell(log.date),
+          txt(meal),
+          txt(e.itemName),
+          num(e.amount),
+          txt(e.unit),
+          num(e.macros.kcal),
+          num(e.macros.protein),
+          num(e.macros.carbs),
+          num(e.macros.fat),
+          num(e.macros.fiber)
+        ]);
       }
-      const m=totals(entries);
-      rows.push([txt(`TOTAL ${meal.toUpperCase()}`,4),txt('',4),txt('',4),num(m.kcal,4),num(m.protein,4),num(m.carbs,4),num(m.fat,4),num(m.fiber,4)]);
-      rows.push([]);
     }
-    const d=totals(log.entries);
-    rows.push([txt('TOTAL DEL DÍA',6),txt('',6),txt('',6),num(d.kcal,6),num(d.protein,6),num(d.carbs,6),num(d.fat,6),num(d.fiber,6)]);
-    rows.push([txt('OBJETIVO DEL DÍA',7),txt('',7),txt('',7),num(log.goals.kcal,7),num(log.goals.protein,7),num(log.goals.carbs,7),num(log.goals.fat,7),num(log.goals.fiber,7)]);
-    rows.push([txt('DIFERENCIA',4),txt('',4),txt('',4),num(d.kcal-log.goals.kcal,4),num(d.protein-log.goals.protein,4),num(d.carbs-log.goals.carbs,4),num(d.fat-log.goals.fat,4),num(d.fiber-log.goals.fiber,4)]);
-    rows.push([]); rows.push([]);
   }
-  return {rows,merges,widths:[34,12,10,13,15,15,15,15]};
+
+  return {
+    rows,
+    merges:[],
+    widths:[14,16,34,12,10,13,15,15,15,15],
+    autoFilter:`A1:J${rows.length}`
+  };
 }
 
 function summarySheet(logs:DailyLog[]):SheetModel{
@@ -56,7 +67,7 @@ function summarySheet(logs:DailyLog[]):SheetModel{
       txt(log.date),num(log.entries.length,8),num(t.kcal),num(t.protein),num(t.carbs),num(t.fat),num(t.fiber),num(log.goals.kcal),num(log.goals.protein),num(t.kcal-log.goals.kcal),num(t.protein-log.goals.protein)
     ]);
   }
-  return {rows,merges:[],widths:[14,11,13,15,15,15,15,13,16,13,16]};
+  return {rows,merges:[],widths:[14,11,13,15,15,15,15,13,16,13,16],autoFilter:`A1:K${rows.length}`};
 }
 
 function colName(index:number){let n=index+1,s='';while(n){n--;s=String.fromCharCode(65+(n%26))+s;n=Math.floor(n/26);}return s;}
@@ -69,17 +80,18 @@ function sheetXml(model:SheetModel){
   const rows=model.rows.map((row,i)=>`<row r="${i+1}">${row.map((c,j)=>cellXml(c,i+1,j)).join('')}</row>`).join('');
   const cols=model.widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('');
   const merges=model.merges.length?`<mergeCells count="${model.merges.length}">${model.merges.map(m=>`<mergeCell ref="${m}"/>`).join('')}</mergeCells>`:'';
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${cols}</cols><sheetData>${rows}</sheetData>${merges}</worksheet>`;
+  const autoFilter=model.autoFilter?`<autoFilter ref="${model.autoFilter}"/>`:'';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${cols}</cols><sheetData>${rows}</sheetData>${autoFilter}${merges}</worksheet>`;
 }
 
 const stylesXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="1"><numFmt numFmtId="164" formatCode="0.00"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="0.00"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/></numFmts>
 <fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
 <fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF282C38"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF6C63FF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE9E7FF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8F5E9"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFD9DCE5"/></bottom><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="9">
+<cellXfs count="10">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1"/>
 <xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1"/>
@@ -89,6 +101,7 @@ const stylesXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xf numFmtId="164" fontId="2" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1"/>
 <xf numFmtId="164" fontId="2" fillId="5" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1"/>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
 </cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
 
