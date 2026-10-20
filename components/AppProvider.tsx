@@ -303,14 +303,9 @@ export function AppProvider({ children }: { children:React.ReactNode }) {
       const day=prev.logs[date]; if(!day)return prev;
       const entries=day.entries.map(e=>{
         if(e.id!==entryId)return e;
-        let macros=e.macros;
-        if(e.itemType==='food') {
-          const food=prev.foods.find(f=>f.id===e.itemId); if(food)macros=scaleMacros(food,amount/100);
-        } else {
-          const recipe=prev.recipes.find(r=>r.id===e.itemId);
-          const weight=recipe?referenceWeight(recipe):0;
-          if(recipe&&weight>0) macros=scaleMacros(recipeMacrosPer100(recipe,prev.foods,prev.recipes),amount/100);
-        }
+        // Mantener los valores nutricionales de la versión registrada, incluso
+        // si la receta o el alimento del catálogo cambió desde entonces.
+        const macros=e.amount>0?scaleMacros(e.macros,amount/e.amount):e.macros;
         return {...e,amount,macros};
       });
       return {...prev,logs:{...prev.logs,[date]:{...day,entries}}};
